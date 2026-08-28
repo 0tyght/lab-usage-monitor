@@ -1,0 +1,2 @@
+course_code,course_name,section,room_code,lecturer_email,day_of_week,starts_time,ends_time,active_from,active_until,notes
+IMP101,การใช้งานระบบนำเข้าตาราง,1,CPE-204,lecturer@lums.local,6,10:00,12:00,2026-07-27,2026-11-15,ข้อมูลทดสอบการนำเข้า CSV

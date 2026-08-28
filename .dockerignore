@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+storage/*.sqlite
+storage/*.sqlite-shm
+storage/*.sqlite-wal
+storage/sessions
+Dockerfile*
+compose*.yaml
+README.md
+docs
+

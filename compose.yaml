@@ -1,0 +1,31 @@
+name: lums
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: lums-app:local
+    ports:
+      - "8086:80"
+    environment:
+      APP_ENV: local
+      APP_DEBUG: "false"
+      APP_URL: http://localhost:8086
+      APP_TIMEZONE: Asia/Bangkok
+      LUMS_DB_DSN: sqlite:/var/www/html/storage/lums.sqlite
+      LUMS_SESSION_PATH: /var/www/html/storage/sessions
+      LUMS_SECURE_COOKIES: "false"
+    volumes:
+      - lums_storage:/var/www/html/storage
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1/') === false ? 1 : 0);"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+
+volumes:
+  lums_storage:
+
