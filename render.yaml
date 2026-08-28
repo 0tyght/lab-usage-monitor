@@ -1,0 +1,37 @@
+services:
+  - type: web
+    name: lab-usage-monitor
+    runtime: docker
+    repo: https://github.com/0tyght/lab-usage-monitor
+    branch: main
+    plan: starter
+    region: singapore
+    autoDeployTrigger: checksPass
+    healthCheckPath: /?health=1
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    envVars:
+      - key: PORT
+        value: "80"
+      - key: APP_ENV
+        value: production
+      - key: APP_DEBUG
+        value: "false"
+      - key: APP_TIMEZONE
+        value: Asia/Bangkok
+      - key: LUMS_DB_DSN
+        value: sqlite:/var/www/html/storage/lums.sqlite
+      - key: LUMS_SESSION_PATH
+        value: /var/www/html/storage/sessions
+      - key: LUMS_SECURE_COOKIES
+        value: "true"
+      - key: LUMS_ADMIN_NAME
+        value: ผู้ดูแลระบบ LUMS
+      - key: LUMS_ADMIN_EMAIL
+        sync: false
+      - key: LUMS_ADMIN_PASSWORD
+        sync: false
+    disk:
+      name: lums-storage
+      mountPath: /var/www/html/storage
+      sizeGB: 1

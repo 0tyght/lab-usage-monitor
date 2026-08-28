@@ -58,6 +58,29 @@ Do not add `-v` to `docker compose down` unless you intentionally want to delete
 
 `APP_URL` is embedded in each generated QR link. For phone testing on the same network, change it in `compose.yaml` from `http://localhost:8086` to the computer's LAN URL (for example `http://192.168.1.20:8086`) and rebuild. On the real server, set it to the public HTTPS domain.
 
+## Deployment pipeline
+
+The `main` branch is the deployment source of truth. GitHub Actions builds the Docker image, checks every PHP file and the JavaScript bundle, verifies a clean production bootstrap, and publishes successful `main` images to `ghcr.io/0tyght/lab-usage-monitor`.
+
+### Render preview
+
+`render.yaml` defines a Docker web service with a persistent disk mounted at `/var/www/html/storage`. Connect the repository as a Render Blueprint and provide these secret values in the Render dashboard:
+
+- `LUMS_ADMIN_EMAIL`
+- `LUMS_ADMIN_PASSWORD` — at least 12 characters
+
+Render receives `APP_URL` from `RENDER_EXTERNAL_URL`. Demo accounts and demo records are not created when `APP_ENV=production`.
+
+### University server or VPS
+
+Copy `.env.production.example` to a secret `.env.production` file on the server, replace every placeholder, then run behind an HTTPS reverse proxy:
+
+```bash
+docker compose --env-file .env.production -f compose.production.yaml up --build -d
+```
+
+The production Compose service binds to `127.0.0.1:8086`, so Nginx, Caddy, or the university reverse proxy should terminate HTTPS and forward requests to that port. Keep the named volume and back it up; never run `docker compose down -v` on production.
+
 ## Recommended next step
 
 Recommended next implementation slice:

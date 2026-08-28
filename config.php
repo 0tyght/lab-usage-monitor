@@ -26,6 +26,7 @@ $envBool = static function (string $key, bool $default = false) use ($env): bool
 };
 
 $databasePath = __DIR__ . DIRECTORY_SEPARATOR . 'storage' . DIRECTORY_SEPARATOR . 'lums.sqlite';
+$defaultBaseUrl = $env('RENDER_EXTERNAL_URL', 'http://localhost/lab-usage-monitor');
 
 return [
     'app' => [
@@ -33,7 +34,7 @@ return [
         'env' => $env('APP_ENV', 'local'),
         'debug' => $envBool('APP_DEBUG', true),
         'timezone' => $env('APP_TIMEZONE', 'Asia/Bangkok'),
-        'base_url' => rtrim((string) $env('APP_URL', 'http://localhost/lab-usage-monitor'), '/'),
+        'base_url' => rtrim((string) $env('APP_URL', $defaultBaseUrl), '/'),
     ],
     'database' => [
         'dsn' => $env('LUMS_DB_DSN', 'sqlite:' . $databasePath),
@@ -48,5 +49,10 @@ return [
         'login_max_attempts' => max(3, (int) $env('LUMS_LOGIN_MAX_ATTEMPTS', '5')),
         'login_window_seconds' => max(60, (int) $env('LUMS_LOGIN_WINDOW', '900')),
         'secure_cookies' => $envBool('LUMS_SECURE_COOKIES', false),
+    ],
+    'bootstrap' => [
+        'admin_name' => $env('LUMS_ADMIN_NAME', 'ผู้ดูแลระบบ LUMS'),
+        'admin_email' => $env('LUMS_ADMIN_EMAIL'),
+        'admin_password' => $env('LUMS_ADMIN_PASSWORD'),
     ],
 ];

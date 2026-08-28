@@ -101,6 +101,19 @@ function week_start_date(?string $value = null): DateTimeImmutable
     return $date->modify('monday this week');
 }
 
+if (($_GET['health'] ?? '') === '1') {
+    try {
+        db()->query('SELECT 1')->fetchColumn();
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(['status'=>'ok','service'=>'lums'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    } catch (Throwable) {
+        http_response_code(503);
+        header('Content-Type: application/json; charset=UTF-8');
+        echo json_encode(['status'=>'unavailable','service'=>'lums']);
+    }
+    exit;
+}
+
 if (($_GET['download'] ?? '') === 'schedule-template') {
     require_auth('admin');
     header('Content-Type: text/csv; charset=UTF-8');
@@ -335,6 +348,7 @@ exit;
 endif;
 
 if ($page === 'login'):
+    $isDemoEnvironment = (string)app_config('app.env', 'local') !== 'production';
 ?>
 <!doctype html>
 <html lang="th">
@@ -380,18 +394,18 @@ if ($page === 'login'):
                     <input type="hidden" name="action" value="login">
                     <label class="field">
                         <span>อีเมล</span>
-                        <input type="email" name="email" autocomplete="username" value="admin@lums.local" required autofocus>
+                        <input type="email" name="email" autocomplete="username" value="<?= $isDemoEnvironment ? 'admin@lums.local' : '' ?>" required autofocus>
                     </label>
                     <label class="field">
                         <span>รหัสผ่าน</span>
                         <span class="password-field">
-                            <input id="login-password" type="password" name="password" autocomplete="current-password" value="admin123" required>
+                            <input id="login-password" type="password" name="password" autocomplete="current-password" value="<?= $isDemoEnvironment ? 'admin123' : '' ?>" required>
                             <button type="button" class="text-button" data-toggle-password="login-password">แสดง</button>
                         </span>
                     </label>
                     <button class="button button--primary button--block" type="submit">เข้าสู่ระบบ</button>
                 </form>
-                <div class="demo-note"><strong>บัญชีทดลอง</strong><span>admin@lums.local / admin123</span></div>
+                <?php if($isDemoEnvironment): ?><div class="demo-note"><strong>บัญชีทดลอง</strong><span>admin@lums.local / admin123</span></div><?php endif; ?>
             </div>
         </section>
     </main>

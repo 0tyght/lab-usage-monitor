@@ -1,0 +1,49 @@
+name: Container CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE_NAME: ghcr.io/${{ github.repository }}
+
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Build test image
+        run: docker build --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" -t lums-ci:${{ github.sha }} .
+
+      - name: Lint PHP and JavaScript
+        run: |
+          docker run --rm --entrypoint sh lums-ci:${{ github.sha }} -c 'find . -type f -name "*.php" -exec php -l {} \;'
+          node --check assets/app.js
+
+      - name: Verify production bootstrap
+        run: |
+          docker run --rm --entrypoint php \
+            -e APP_ENV=production \
+            -e LUMS_ADMIN_EMAIL=admin@example.invalid \
+            -e LUMS_ADMIN_PASSWORD=CiOnlyPassword-2569 \
+            lums-ci:${{ github.sha }} scripts/init.php
+
+      - name: Log in to GitHub Container Registry
+        if: github.event_name == 'push'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Publish immutable and latest images
+        if: github.event_name == 'push'
+        run: |
+          docker tag lums-ci:${{ github.sha }} "${IMAGE_NAME}:${{ github.sha }}"
+          docker tag lums-ci:${{ github.sha }} "${IMAGE_NAME}:latest"
+          docker push "${IMAGE_NAME}:${{ github.sha }}"
+          docker push "${IMAGE_NAME}:latest"
+

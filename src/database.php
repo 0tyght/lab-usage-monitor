@@ -406,6 +406,58 @@ function seed_demo_data(PDO $connection): bool
     return true;
 }
 
+function seed_production_data(PDO $connection): bool
+{
+    if ((int)$connection->query('SELECT COUNT(*) FROM users')->fetchColumn() > 0) return false;
+
+    $adminName = trim((string)app_config('bootstrap.admin_name', 'ผู้ดูแลระบบ LUMS'));
+    $adminEmail = strtolower(trim((string)app_config('bootstrap.admin_email', '')));
+    $adminPassword = (string)app_config('bootstrap.admin_password', '');
+    if (!filter_var($adminEmail, FILTER_VALIDATE_EMAIL)) {
+        throw new RuntimeException('Production requires a valid LUMS_ADMIN_EMAIL environment variable');
+    }
+    if (strlen($adminPassword) < 12) {
+        throw new RuntimeException('Production requires LUMS_ADMIN_PASSWORD with at least 12 characters');
+    }
+
+    $now = utc_now();
+    $rooms = [
+        ['CPE-101', 'ห้องปฏิบัติการคอมพิวเตอร์ 1', 'อาคารวิศวกรรมศาสตร์', '1', 40, 'available', 'ห้องสำหรับการเรียนการสอนและฝึกปฏิบัติทั่วไป'],
+        ['CPE-204', 'ห้องปฏิบัติการเครือข่าย', 'อาคารวิศวกรรมศาสตร์', '2', 30, 'available', 'อุปกรณ์เครือข่ายและระบบแม่ข่าย'],
+        ['EE-301', 'ห้องปฏิบัติการวงจรไฟฟ้า', 'อาคารปฏิบัติการ', '3', 24, 'available', 'ชุดทดลองวงจรไฟฟ้าและเครื่องมือวัด'],
+        ['IOT-401', 'ห้องปฏิบัติการ IoT', 'อาคารนวัตกรรม', '4', 32, 'available', 'ชุดพัฒนาไมโครคอนโทรลเลอร์และเซนเซอร์'],
+    ];
+
+    $connection->beginTransaction();
+    try {
+        $admin = $connection->prepare('INSERT INTO users (email, password_hash, full_name, role, student_code, department, is_active, created_at, updated_at) VALUES (:email,:password_hash,:full_name,\'admin\',NULL,NULL,1,:created_at,:updated_at)');
+        $admin->execute([
+            ':email'=>$adminEmail,
+            ':password_hash'=>password_hash($adminPassword, PASSWORD_DEFAULT),
+            ':full_name'=>$adminName !== '' ? $adminName : 'ผู้ดูแลระบบ LUMS',
+            ':created_at'=>$now,
+            ':updated_at'=>$now,
+        ]);
+
+        if ((int)$connection->query('SELECT COUNT(*) FROM rooms')->fetchColumn() === 0) {
+            $room = $connection->prepare("INSERT INTO rooms (code,name,building,floor,capacity,status,qr_token,description,created_at,updated_at) VALUES (:code,:name,:building,:floor,:capacity,:status,:qr_token,:description,:created_at,:updated_at)");
+            foreach ($rooms as [$code,$name,$building,$floor,$capacity,$status,$description]) {
+                $room->execute([
+                    ':code'=>$code, ':name'=>$name, ':building'=>$building, ':floor'=>$floor, ':capacity'=>$capacity,
+                    ':status'=>$status, ':qr_token'=>bin2hex(random_bytes(16)), ':description'=>$description,
+                    ':created_at'=>$now, ':updated_at'=>$now,
+                ]);
+            }
+        }
+        $connection->commit();
+    } catch (Throwable $exception) {
+        if ($connection->inTransaction()) $connection->rollBack();
+        throw $exception;
+    }
+
+    return true;
+}
+
 function ensure_sqlite_usage_columns(PDO $connection): void
 {
     $columns = $connection->query('PRAGMA table_info(usage_records)')->fetchAll();

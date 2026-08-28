@@ -1,5 +1,9 @@
 FROM php:8.2-apache
 
+LABEL org.opencontainers.image.title="LUMS" \
+      org.opencontainers.image.description="Laboratory Usage Monitoring System" \
+      org.opencontainers.image.source="https://github.com/0tyght/lab-usage-monitor"
+
 RUN docker-php-ext-install pdo_mysql
 
 WORKDIR /var/www/html
