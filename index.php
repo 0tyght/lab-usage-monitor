@@ -70,7 +70,7 @@ function class_display_status(array $classSession): string
 function csv_safe_value(mixed $value): string
 {
     $value = (string)$value;
-    return preg_match('/^[=+\-@]/u', $value) ? "'" . $value : $value;
+    return preg_match('/^[\s\x00-\x1f]*[=+\-@]/u', $value) ? "'" . $value : $value;
 }
 
 function role_label(string $role): string
@@ -135,20 +135,36 @@ if (($_GET['download'] ?? '') === 'schedule-template') {
 
 if (($_GET['download'] ?? '') === 'report-csv') {
     require_auth(['admin', 'lecturer']);
-    $period = (string)($_GET['period'] ?? 'month');
-    $roomId = max(0, (int)($_GET['room_id'] ?? 0));
-    $rows = report_class_rows($period, $roomId);
+    $filters = planning_filters($_GET, true);
+    $report = usage_report($filters);
+    if ($report['errors']) {
+        http_response_code(422);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo implode(' ', $report['errors']);
+        exit;
+    }
+    $table = usage_report_table($report);
     header('Content-Type: text/csv; charset=UTF-8');
-    header('Content-Disposition: attachment; filename="lums-class-report-' . date('Ymd-His') . '.csv"');
+    header('Cache-Control: no-store');
+    header('Content-Disposition: attachment; filename="lums-report-' . $filters['date_from'] . '-' . $filters['date_to'] . '.csv"');
     echo "\xEF\xBB\xBF";
     $output = fopen('php://output', 'wb');
-    fputcsv($output, ['class_id','course_code','course_name','section','room_code','room_name','lecturer','starts_at','ends_at','status','attendance_count']);
-    foreach ($rows as $row) {
-        fputcsv($output, array_map('csv_safe_value', [
-            $row['id'], $row['course_code'], $row['course_name'], $row['section'] ?? '', $row['room_code'], $row['room_name'],
-            $row['lecturer_name'], $row['starts_at'], $row['ends_at'], status_label(class_display_status($row)), $row['attendance_count'],
-        ]));
-    }
+    $roomLabel = 'ทุกห้อง';
+    foreach (list_rooms() as $room) if ($room['id'] === $filters['room_id']) $roomLabel = $room['code'];
+    $metadata = [
+        ['รายงานการใช้ห้อง LUMS'],
+        ['ช่วงวันที่', $filters['date_from'], $filters['date_to']],
+        ['ช่วงเวลาในแต่ละวัน (UTC+7)', $filters['time_from'], $filters['time_to']],
+        ['ห้อง', $roomLabel],
+        ['ปี/ภาค', $filters['term_id'] ? get_academic_term($filters['term_id'])['name'] : 'ทุกภาค'],
+        ['ข้อมูล', ['all'=>'แผนและคลาสที่สร้าง', 'classes'=>'คลาสที่สร้างแล้ว', 'schedule'=>'แผนที่ยังไม่สร้างคลาส'][$filters['source']]],
+        ['หน่วย', $report['unit_label'], $filters['unit']==='periods' ? '1 คาบ = '.$filters['period_minutes'].' นาที' : '1 ชั่วโมง = 60 นาที'],
+        ['รวม', number_format($report['quantity'], 2, '.', ''), 'รายการไม่ซ้ำ', $report['events']],
+        ['คำค้น', $filters['q'], 'เรียงลำดับ', $filters['sort']==='desc' ? 'มากไปน้อย' : 'น้อยไปมาก'],
+        ['หมายเหตุ', 'เวลาตามกำหนดการเฉพาะช่วงที่กรอง ไม่ใช่เวลาตรวจวัดจริง; การลงชื่อเป็นยอดทั้งคลาสนับครั้งเดียว'],
+        [],
+    ];
+    foreach (array_merge($metadata, [$table['headers']], $table['rows']) as $row) fputcsv($output, array_map('csv_safe_value', $row));
     fclose($output);
     exit;
 }
@@ -223,7 +239,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to('schedule', ['term_id'=>(int)$result['id']]);
         }
         $_SESSION['term_form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถสร้างภาคการศึกษาได้'];
-        $_SESSION['term_old_input'] = array_intersect_key($_POST, array_flip(['term_name', 'academic_year', 'semester', 'term_starts_on', 'term_ends_on']));
+        $_SESSION['term_old_input'] = array_intersect_key($_POST, array_flip(['academic_year', 'semester', 'term_starts_on', 'term_ends_on', 'dates_confirmed']));
         $context = array_intersect_key($_GET, array_flip(['term_id', 'room_id', 'week', 'weekend', 'q', 'selected']));
         redirect_to('schedule', $context + ['new_term'=>1]);
     }
@@ -280,7 +296,7 @@ if (!in_array($page, ['login', 'student-checkin'], true)) {
     $user = current_user();
 }
 
-$allowedPages = ['login', 'student-checkin', 'dashboard', 'schedule', 'classes', 'class-detail', 'records', 'rooms', 'reports'];
+$allowedPages = ['login', 'student-checkin', 'dashboard', 'schedule', 'calendar', 'classes', 'class-detail', 'records', 'rooms', 'reports'];
 if (!in_array($page, $allowedPages, true)) {
     http_response_code(404);
     $page = 'not-found';
@@ -434,6 +450,7 @@ endif;
 $nav = [
     'dashboard' => ['ภาพรวม', 'layout-dashboard'],
     'schedule' => ['ตารางเรียน', 'calendar-days'],
+    'calendar' => ['ปฏิทินการใช้ห้อง', 'calendar-days'],
     'classes' => ['คลาสเรียนและ QR', 'qr-code'],
     'rooms' => ['ห้องปฏิบัติการ', 'door-open'],
     'records' => ['ประวัติการเข้าเรียน', 'history'],
@@ -450,6 +467,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
     <title><?= e($nav[$navPage][0] ?? 'LUMS') ?> — LUMS</title>
     <link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
     <link rel="stylesheet" href="assets/app.css">
+    <link rel="stylesheet" href="assets/planning.css">
 </head>
 <body class="app-page">
     <a class="skip-link" href="#main-content">ข้ามไปยังเนื้อหา</a>
@@ -528,11 +546,14 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         <?php render_class_table($data['recent']); ?>
                     </section>
 
+                <?php elseif ($page === 'calendar'): ?>
+                    <?php require __DIR__ . '/views/calendar.php'; ?>
                 <?php elseif ($page === 'schedule'): ?>
                     <?php
                     $terms = list_academic_terms();
                     $termErrors = $_SESSION['term_form_errors'] ?? [];
                     $termInput = $_SESSION['term_old_input'] ?? [];
+                    if (!$termInput) $termInput = array_intersect_key($_GET, array_flip(['academic_year', 'semester']));
                     unset($_SESSION['term_form_errors'], $_SESSION['term_old_input']);
                     $termContext = array_intersect_key($_GET, array_flip(['term_id', 'room_id', 'week', 'weekend', 'q', 'selected']));
                     $termReturnUrl = '?' . http_build_query(['page'=>'schedule'] + $termContext);
@@ -561,6 +582,11 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     }));
                     ?>
                     <header class="page-header"><div><p class="eyebrow">วางแผนการใช้ห้องทั้งเทอม</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>ดูตารางรายสัปดาห์ คลิกช่องว่างเพื่อเพิ่มคาบ และตรวจการชนกันก่อนบันทึก</p></div><?php if ($user['role']==='admin'): ?><div class="schedule-header-actions"><?php if ($term): ?><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a><?php endif; ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings"><span data-icon="plus"></span>เพิ่มภาคการศึกษา</a></div><?php endif; ?></header>
+                    <?php if ($term): ?><nav class="academic-year-slots" aria-label="3 ภาคในปีการศึกษาที่เลือก">
+                        <?php foreach (semester_labels() as $semesterKey=>$semesterText): $slotTerm = null; foreach ($terms as $candidate) if ($candidate['academic_year'] === $term['academic_year'] && (string)$candidate['semester'] === (string)$semesterKey) $slotTerm = $candidate; ?>
+                            <?php if ($slotTerm): ?><a href="?page=schedule&amp;term_id=<?= $slotTerm['id'] ?>" <?= $slotTerm['id']===$termId?'aria-current="page"':'' ?>><strong><?= e($slotTerm['name']) ?></strong><small><?= e($semesterText) ?> · กำหนดวันที่แล้ว</small></a><?php elseif ($user['role']==='admin'): ?><a href="?<?= e(http_build_query(['page'=>'schedule', 'new_term'=>1, 'academic_year'=>$term['academic_year'], 'semester'=>$semesterKey])) ?>"><strong><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?></strong><small><?= e($semesterText) ?> · เพิ่มช่วงวันที่</small></a><?php else: ?><span><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?> · ยังไม่กำหนดวันที่</span><?php endif; ?>
+                        <?php endforeach; ?>
+                    </nav><?php endif; ?>
                     <?php if (!$term): ?>
                         <section class="empty-feature"><span data-icon="calendar-days"></span><h2>ยังไม่มีภาคการศึกษา</h2><p>ผู้ดูแลระบบต้องสร้างภาคการศึกษาก่อนเริ่มจัดตารางเรียน</p><?php if ($user['role']==='admin'): ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษาแรก</a><?php endif; ?></section>
                     <?php else: ?>
@@ -648,44 +674,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     </div>
                     <?php endif; ?>
                     <?php if ($user['role']==='admin'): ?>
-                        <dialog id="term-settings" class="term-dialog" aria-labelledby="term-dialog-title" aria-describedby="term-dialog-description" <?= isset($_GET['new_term']) || $termErrors ? 'open' : '' ?>>
-                            <header class="term-dialog__header">
-                                <div><h2 id="term-dialog-title">เพิ่มภาคการศึกษา</h2><p id="term-dialog-description">กำหนดชื่อและช่วงวันที่สำหรับจัดตารางเรียนทั้งเทอม</p></div>
-                                <a class="icon-button" href="<?= e($termReturnUrl) ?>" data-close-term aria-label="ปิดหน้าต่างเพิ่มภาคการศึกษา"><span data-icon="x"></span></a>
-                            </header>
-                            <form method="post" action="<?= e($termReturnUrl) ?>" data-term-form novalidate>
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="create_term">
-                                <div class="term-dialog__body">
-                                    <?php if ($termErrors): ?><div class="alert alert--error term-error-summary" role="alert" tabindex="-1" data-term-error-summary><strong>ยังไม่ได้บันทึกภาคการศึกษา</strong><span><?= e($termErrors['form'] ?? 'กรุณาแก้ไขข้อมูลที่ระบุด้านล่าง แล้วบันทึกอีกครั้ง') ?></span></div><?php endif; ?>
-                                    <p class="term-required-note">กรอกข้อมูลให้ครบทุกช่อง · ปีการศึกษาใช้ พ.ศ.</p>
-                                    <div class="form-grid">
-                                        <?php
-                                        $termFields = [
-                                            'term_name'=>['label'=>'ชื่อภาคการศึกษา', 'type'=>'text', 'value'=>'', 'attributes'=>'minlength="3" maxlength="100" placeholder="เช่น ภาคการศึกษาที่ 2/2569"', 'full'=>true],
-                                            'academic_year'=>['label'=>'ปีการศึกษา (พ.ศ.)', 'type'=>'number', 'value'=>date('Y')+543, 'attributes'=>'min="2500" max="2700" step="1"'],
-                                            'semester'=>['label'=>'ภาคการศึกษา', 'type'=>'select', 'value'=>'1'],
-                                            'term_starts_on'=>['label'=>'วันเปิดภาค', 'type'=>'date', 'value'=>'', 'attributes'=>''],
-                                            'term_ends_on'=>['label'=>'วันปิดภาค', 'type'=>'date', 'value'=>'', 'attributes'=>''],
-                                        ];
-                                        foreach ($termFields as $fieldName=>$field): $error = $termErrors[$fieldName] ?? ''; ?>
-                                            <div class="field <?= !empty($field['full']) ? 'field--full' : '' ?>">
-                                                <label for="term-<?= e($fieldName) ?>"><?= e($field['label']) ?></label>
-                                                <?php if ($field['type']==='select'): ?>
-                                                    <select id="term-<?= e($fieldName) ?>" name="<?= e($fieldName) ?>" required aria-describedby="error-<?= e($fieldName) ?>" <?= $error ? 'aria-invalid="true"' : '' ?>>
-                                                        <?php foreach (['1'=>'ภาค 1', '2'=>'ภาค 2', 'summer'=>'ภาคฤดูร้อน'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= (string)($termInput[$fieldName] ?? $field['value'])===(string)$value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?>
-                                                    </select>
-                                                <?php else: ?>
-                                                    <input id="term-<?= e($fieldName) ?>" type="<?= e($field['type']) ?>" name="<?= e($fieldName) ?>" value="<?= e($termInput[$fieldName] ?? $field['value']) ?>" <?= $field['attributes'] ?> required aria-describedby="error-<?= e($fieldName) ?>" <?= $error ? 'aria-invalid="true"' : '' ?>>
-                                                <?php endif; ?>
-                                                <span class="field-error" id="error-<?= e($fieldName) ?>" <?= $error ? '' : 'hidden' ?>><?= e($error) ?></span>
-                                            </div>
-                                        <?php endforeach; ?>
-                                    </div>
-                                </div>
-                                <footer class="term-dialog__actions"><a class="button button--secondary" href="<?= e($termReturnUrl) ?>" data-close-term>ยกเลิก</a><button class="button button--primary" type="submit">บันทึกภาคการศึกษา</button></footer>
-                            </form>
-                        </dialog>
+                        <?php require __DIR__ . '/views/term-dialog.php'; ?>
                     <?php endif; ?>
 
                 <?php elseif ($page === 'classes'): ?>
@@ -772,43 +761,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     <section class="section-block"><div class="section-heading"><div><h2>รายการห้อง</h2><p>ทั้งหมด <?= count($rooms) ?> ห้อง</p></div></div><div class="rooms-grid"><?php foreach ($rooms as $room): ?><article class="room-card"><div class="room-card-header"><span class="room-code"><?= e($room['code']) ?></span><span class="status status--<?= e($room['live_status']) ?>"><span></span><?= e(status_label($room['live_status'])) ?></span></div><h2><?= e($room['name']) ?></h2><p><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?></p><dl><div><dt>ความจุ</dt><dd><?= e($room['capacity']) ?> คน</dd></div><div><dt>สถานะระบบ</dt><dd><?= e(match($room['live_status']) { 'active'=>'มีคลาสกำลังใช้งาน', 'maintenance'=>'งดจัดคลาสชั่วคราว', default=>'พร้อมจัดคลาส' }) ?></dd></div></dl><?php if($room['status']==='available'): ?><a class="text-link" href="?page=classes&amp;room_id=<?= e($room['id']) ?>#new-class">สร้างคลาสในห้องนี้</a><?php else: ?><span class="muted">ยังไม่สามารถสร้างคลาสในห้องนี้</span><?php endif; ?></article><?php endforeach; ?></div></section>
 
                 <?php elseif ($page === 'reports'): ?>
-                    <?php
-                    $reportPeriod = (string)($_GET['period'] ?? 'month');
-                    $reportRoomId = max(0, (int)($_GET['room_id'] ?? 0));
-                    $report = report_data($reportPeriod, $reportRoomId);
-                    $reportRows = report_class_rows($report['period'], $reportRoomId);
-                    $reportRooms = list_rooms();
-                    $exportQuery = http_build_query(['download'=>'report-csv','period'=>$report['period'],'room_id'=>$reportRoomId]);
-                    ?>
-                    <header class="page-header"><div><p class="eyebrow">วิเคราะห์ข้อมูล</p><h1>รายงานการใช้งาน</h1><p>สรุปคลาสและจำนวนผู้ลงชื่อเพื่อวางแผนห้องปฏิบัติการ</p></div><a class="button button--primary" href="?<?= e($exportQuery) ?>"><span data-icon="download"></span>ส่งออก CSV</a></header>
-                    <form method="get" class="filter-bar report-filter">
-                        <input type="hidden" name="page" value="reports">
-                        <label><span>ช่วงเวลา</span><select name="period"><option value="day" <?= $report['period']==='day'?'selected':'' ?>>วันนี้</option><option value="week" <?= $report['period']==='week'?'selected':'' ?>>สัปดาห์นี้</option><option value="month" <?= $report['period']==='month'?'selected':'' ?>>เดือนนี้</option></select></label>
-                        <label><span>ห้อง</span><select name="room_id"><option value="0">ทุกห้อง</option><?php foreach($reportRooms as $room): ?><option value="<?= e($room['id']) ?>" <?= $reportRoomId===$room['id']?'selected':'' ?>><?= e($room['code'].' — '.$room['name']) ?></option><?php endforeach; ?></select></label>
-                        <button class="button button--secondary" type="submit">แสดงรายงาน</button>
-                    </form>
-                    <section class="report-overview" aria-labelledby="report-summary-title">
-                        <div class="section-heading"><div><h2 id="report-summary-title">สรุป <?= e($report['label']) ?></h2><p>ช่วงวันที่ <?= e($report['date_range']) ?> · <?= $reportRoomId ? 'กรองตามห้องที่เลือก' : 'ทุกห้อง' ?></p></div><span class="result-count"><?= e($report['total']) ?> คลาส</span></div>
-                        <div class="report-summary"><span><strong><?= e($report['attendees']) ?></strong>การลงชื่อทั้งหมด</span><span><strong><?= e($report['active']) ?></strong>กำลังเปิดรับลงชื่อ</span><span><strong><?= e($report['overdue']) ?></strong>คลาสเกินเวลา</span><span><strong><?= e($report['completed']) ?></strong>ปิดรับแล้ว</span><span><strong><?= e($report['top_room'] ?: '—') ?></strong>ห้องที่มีผู้ลงชื่อสูงสุด</span></div>
-                    </section>
-                    <section class="section-block">
-                        <div class="section-heading"><div><h2>รายละเอียดคลาส</h2><p>ข้อมูลบนหน้าจอและไฟล์ CSV ใช้ช่วงเวลาและห้องเดียวกัน</p></div><span class="result-count">พบ <?= count($reportRows) ?> รายการ</span></div>
-                        <?php if(!$reportRows): ?><div class="empty-state"><span data-icon="inbox"></span><strong>ไม่พบข้อมูลในช่วงที่เลือก</strong><span>ลองเปลี่ยนช่วงเวลาหรือเลือกทุกห้อง</span></div><?php else: ?>
-                        <div class="table-wrap"><table class="data-table">
-                            <thead><tr><th>รายวิชา</th><th>วันและเวลา</th><th>ห้อง</th><th>ผู้สอน</th><th>ผู้ลงชื่อ</th><th>สถานะ</th></tr></thead>
-                            <tbody><?php foreach ($reportRows as $item): $reportStatus = class_display_status($item); ?>
-                                <tr>
-                                    <td data-label="รายวิชา"><strong><?= e($item['course_code']) ?></strong><small><?= e($item['course_name']) ?><?= $item['section'] ? ' · กลุ่ม ' . e($item['section']) : '' ?></small></td>
-                                    <td data-label="วันและเวลา"><strong><?= e(thai_datetime($item['starts_at'])) ?></strong><small>ถึง <?= e(thai_datetime($item['ends_at'], false)) ?></small></td>
-                                    <td data-label="ห้อง"><?= e($item['room_code']) ?></td>
-                                    <td data-label="ผู้สอน"><?= e($item['lecturer_name']) ?></td>
-                                    <td data-label="ผู้ลงชื่อ"><span><?= e($item['attendance_count']) ?> คน</span></td>
-                                    <td data-label="สถานะ"><span class="status status--<?= e($reportStatus) ?>"><span></span><?= e(status_label($reportStatus)) ?></span></td>
-                                </tr>
-                            <?php endforeach; ?></tbody>
-                        </table></div>
-                        <?php endif; ?>
-                    </section>
+                    <?php require __DIR__ . '/views/reports.php'; ?>
 
                 <?php else: ?>
                     <section class="empty-feature"><span data-icon="circle-alert"></span><h1>ไม่พบหน้าที่ต้องการ</h1><p>ลิงก์อาจไม่ถูกต้องหรือหน้านี้ถูกย้ายแล้ว</p><a class="button button--primary" href="?page=dashboard">กลับหน้าภาพรวม</a></section>
@@ -819,6 +772,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
     <div class="nav-scrim" data-nav-scrim hidden></div>
     <script src="assets/qrcode.min.js" defer></script>
     <script src="assets/app.js" defer></script>
+    <script src="assets/planning.js" defer></script>
 </body>
 </html>
 

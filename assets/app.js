@@ -525,7 +525,7 @@
     const form = q("[data-term-form]", dialog);
     const triggers = qa("[data-open-term]");
     let opener = triggers[0];
-    const fields = qa("input[required], select[required]", form);
+    const fields = qa('input[required], select[required], input[name="dates_confirmed"]', form);
     const startsOn = q('[name="term_starts_on"]', form);
     const endsOn = q('[name="term_ends_on"]', form);
 
@@ -584,7 +584,8 @@
     const validate = (field) => {
       field.setCustomValidity("");
       let message = "";
-      if (!field.value.trim()) message = "กรุณากรอกข้อมูลช่องนี้";
+      if (field.type === "checkbox" && field.required && !field.checked) message = "กรุณายืนยันว่าตรวจสอบวันที่กับประกาศแล้ว";
+      else if (!field.value.trim()) message = "กรุณากรอกข้อมูลช่องนี้";
       else if (field.name === "term_name" && (Array.from(field.value.trim()).length < 3 || Array.from(field.value.trim()).length > 100)) message = "ชื่อภาคการศึกษาต้องมีความยาว 3–100 ตัวอักษร";
       else if (field.name === "academic_year" && !field.checkValidity()) message = "ปีการศึกษาต้องเป็นจำนวนเต็มระหว่าง 2500–2700 พ.ศ.";
       else if (field === endsOn && startsOn.value && endsOn.value < startsOn.value) message = "วันปิดภาคต้องไม่อยู่ก่อนวันเปิดภาค";

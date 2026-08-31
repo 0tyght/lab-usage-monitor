@@ -67,19 +67,19 @@ foreach (['scheduled', 'overdue', 'draft', 'closed', 'cancelled'] as $notOpen) {
     $closedToken = get_class_session($ids[$notOpen], false)['qr_token'];
     $expect(!register_student_attendance($closedToken, $attendanceInput)['ok'], $notOpen . ' class must reject check-in.');
 }
-$termInput = ['term_name'=>'ภาคการศึกษาทดสอบ 2/2698', 'academic_year'=>'2698', 'semester'=>'2', 'term_starts_on'=>'2155-11-01', 'term_ends_on'=>'2156-03-31'];
+$termInput = ['academic_year'=>'2698', 'semester'=>'2', 'term_starts_on'=>'2155-11-01', 'term_ends_on'=>'2156-03-31', 'dates_confirmed'=>'1'];
 $expect(!create_academic_term($termInput)['ok'], 'Lecturers cannot create academic terms.');
 $_SESSION['user_id'] = $adminId;
 $termCount = count(list_academic_terms());
 $expect(!create_academic_term([])['ok'], 'Empty term form is rejected.');
-foreach (['term_name'=>'ก', 'academic_year'=>'2499', 'semester'=>'3', 'term_starts_on'=>'2155-02-30', 'term_ends_on'=>'2155-10-01'] as $field=>$invalid) {
+foreach (['academic_year'=>'2499', 'semester'=>'4', 'term_starts_on'=>'2155-02-30', 'term_ends_on'=>'2155-10-01'] as $field=>$invalid) {
     $result = create_academic_term(array_replace($termInput, [$field=>$invalid]));
     $expect(!$result['ok'] && isset($result['errors'][$field]), 'Term validation identifies invalid field: ' . $field);
 }
 $expect(count(list_academic_terms()) === $termCount, 'Failed term validation must not create records.');
 $termResult = create_academic_term($termInput);
 $expect($termResult['ok'], 'Valid term is saved.');
-$expect(get_academic_term($termResult['id'])['name'] === $termInput['term_name'], 'Saved term retains its name.');
+$expect(get_academic_term($termResult['id'])['name'] === '2698/2', 'Term code is generated from year and semester.');
 $duplicateTerm = create_academic_term($termInput);
 $expect(!$duplicateTerm['ok'] && isset($duplicateTerm['errors']['academic_year']), 'Duplicate term returns an actionable field error.');
 $expect(count(list_academic_terms()) === $termCount + 1, 'Duplicate submit does not create another term.');

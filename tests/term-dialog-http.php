@@ -49,7 +49,7 @@ $expect(str_contains($empty, 'data-open-term'), 'Empty-term state offers the pop
 $expect((bool)preg_match('/<dialog[^>]+\bopen\b/', $fallback), 'Direct link opens the form without JavaScript');
 
 $context = '/?page=schedule&room_id=2&week=2026-08-31&weekend=1&q=TEST';
-[$status, , $location] = $request($context, ['action'=>'create_term', 'csrf_token'=>$csrf($fallback), 'term_name'=>'<script>test</script>', 'academic_year'=>'2499']);
+[$status, , $location] = $request($context, ['action'=>'create_term', 'csrf_token'=>$csrf($fallback), 'term_starts_on'=>'"><script>test</script>', 'academic_year'=>'2499']);
 $expect($status === 302 && str_contains($location, 'new_term=1'), 'Invalid form redirects back to the dialog');
 $expect(str_contains($location, 'room_id=2') && str_contains($location, 'week=2026-08-31') && str_contains($location, 'weekend=1') && str_contains($location, 'q=TEST'), 'Validation preserves timetable filters');
 [, $invalid] = $request('/' . $location);
@@ -57,7 +57,7 @@ $expect(str_contains($invalid, 'data-term-error-summary'), 'Server errors have a
 $expect(str_contains($invalid, '&lt;script&gt;test&lt;/script&gt;') && !str_contains($invalid, '<script>test</script>'), 'Submitted draft is retained and safely escaped');
 $expect(str_contains($invalid, 'value="2499"') && str_contains($invalid, 'aria-invalid="true"'), 'Invalid fields retain their values and accessible error state');
 
-$term = ['action'=>'create_term', 'term_name'=>'ภาคการศึกษาทดสอบ 2/2569', 'academic_year'=>'2569', 'semester'=>'2', 'term_starts_on'=>'2026-11-01', 'term_ends_on'=>'2027-03-31'];
+$term = ['action'=>'create_term', 'academic_year'=>'2569', 'semester'=>'2', 'term_starts_on'=>'2026-11-01', 'term_ends_on'=>'2027-03-31', 'dates_confirmed'=>'1'];
 [$status, , $location] = $request($context, $term + ['csrf_token'=>$csrf($invalid)]);
 $expect($status === 302 && str_contains($location, 'term_id=') && !str_contains($location, 'new_term'), 'Success selects the new term and closes the dialog');
 [, $success] = $request('/' . $location);
@@ -70,3 +70,44 @@ $expect(!preg_match('/id="schedule-form".*?alert--error/s', strstr($duplicate, '
 require dirname(__DIR__) . '/src/bootstrap.php';
 $expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === 1, 'Duplicate save does not create a second record');
 echo "Term dialog HTTP checks passed: $checks\n";
+
+// Same disposable database: verify calendar, report rendering and CSV as one flow.
+$roomId = (int)db()->query('SELECT id FROM rooms ORDER BY id LIMIT 1')->fetchColumn();
+$adminId = (int)db()->query("SELECT id FROM users WHERE email='admin@example.invalid'")->fetchColumn();
+$termId = (int)db()->query('SELECT id FROM academic_terms LIMIT 1')->fetchColumn();
+$fixture = db()->prepare("INSERT INTO course_schedules (term_id,room_id,lecturer_user_id,course_code,course_name,day_of_week,starts_time,ends_time,active_from,active_until,created_at,updated_at) VALUES (?,?,?,'HTTP101',?,1,'09:00','11:00','2026-11-01','2026-11-30',?,?)");
+$fixture->execute([$termId, $roomId, $adminId, 'ทดสอบรายงานสมมติ', utc_now(), utc_now()]);
+[, $calendar] = $request('/?page=calendar&month=2026-11&date=2026-11-02&term_id='.$termId);
+$expect(str_contains($calendar, 'data-calendar-day="2026-11-02"') && str_contains($calendar, 'ทดสอบรายงานสมมติ'), 'Calendar includes weekly occurrences and daily details');
+$expect((bool)preg_match('/<dialog[^>]+\bopen\b/', $calendar), 'Daily timetable has a server-rendered popup fallback');
+$expect(!str_contains($calendar, 'qr_token') && !str_contains($calendar, 'password_hash'), 'Calendar payload excludes QR secrets and credentials');
+$filters = ['date_from'=>'2026-11-02','date_to'=>'2026-11-30','room_id'=>$roomId,'term_id'=>$termId,'source'=>'all','time_from'=>'09:30','time_to'=>'10:30','unit'=>'periods','period_minutes'=>50,'group'=>'detail','q'=>'HTTP101','sort'=>'desc'];
+[, $html] = $request('/?page=reports&'.http_build_query($filters));
+$dom = new DOMDocument();
+@$dom->loadHTML('<?xml encoding="UTF-8">'.$html);
+$xpath = new DOMXPath($dom);
+$uiRows = [];
+foreach ($xpath->query('//table[contains(@class,"report-data-table")]/tbody/tr') as $tr) {
+    $row = [];
+    foreach ($xpath->query('./td', $tr) as $td) $row[] = trim($td->textContent);
+    $uiRows[] = $row;
+}
+$expect(count($uiRows) === 5 && $uiRows[0][0] === '2026-11-30', 'Report finds five Mondays and respects descending order');
+$expect($uiRows[0][1] === '09:30' && $uiRows[0][2] === '10:30' && $uiRows[0][9] === '1.20', 'Report clips time and calculates equivalent periods');
+[$status, $csv] = $request('/?download=report-csv&'.http_build_query($filters));
+$lines = array_map('str_getcsv', explode("\n", trim(substr($csv,3))));
+$headerIndex = null;
+foreach ($lines as $i=>$row) if (($row[0] ?? '') === 'วันที่' && count($row) === 11) $headerIndex = $i;
+$expect($status === 200 && str_starts_with($csv,"\xEF\xBB\xBF") && $headerIndex !== null, 'CSV is downloadable UTF-8 with Thai headers');
+$expect(array_slice($lines, $headerIndex+1) === $uiRows, 'CSV rows exactly match the filtered, sorted screen');
+[, $print] = $request('/?page=reports&print=1&'.http_build_query($filters));
+$expect(str_contains($print, 'data-print-report') && str_contains($print, '2026-11-30'), 'Printable report preserves data and offers PDF print action');
+[$status] = $request('/?download=report-csv&date_from=2026-02-30');
+$expect($status === 422, 'CSV rejects invalid date filters');
+[, $emptyReport] = $request('/?page=reports&'.http_build_query(array_replace($filters,['q'=>'not-a-course'])));
+$expect(str_contains($emptyReport,'ไม่พบข้อมูลตามตัวกรอง'), 'Report search has a useful empty state');
+$formula = " \t=1+1";
+db()->prepare('UPDATE course_schedules SET course_name=? WHERE course_code=?')->execute([$formula,'HTTP101']);
+[, $safeCsv] = $request('/?download=report-csv&'.http_build_query($filters));
+$expect(str_contains($safeCsv, "'".$formula), 'Export neutralizes formulas even after leading whitespace');
+echo "Term and planning HTTP checks passed: $checks\n";

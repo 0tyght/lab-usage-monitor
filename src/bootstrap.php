@@ -7,7 +7,9 @@ $lumsConfig = require dirname(__DIR__) . '/config.php';
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/security.php';
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/academic-calendar.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/planning.php';
 
 date_default_timezone_set((string) app_config('app.timezone', 'Asia/Bangkok'));
 

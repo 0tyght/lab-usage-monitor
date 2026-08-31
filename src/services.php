@@ -124,6 +124,7 @@ function list_academic_terms(): array
     foreach ($rows as &$row) {
         $row['id'] = (int) $row['id'];
         $row['academic_year'] = (int) $row['academic_year'];
+        $row['name'] = academic_term_code($row['academic_year'], $row['semester']);
     }
 
     return $rows;
@@ -137,6 +138,7 @@ function get_academic_term(int $id): ?array
     if (!$row) return null;
     $row['id'] = (int) $row['id'];
     $row['academic_year'] = (int) $row['academic_year'];
+    $row['name'] = academic_term_code($row['academic_year'], $row['semester']);
 
     return $row;
 }
@@ -154,21 +156,21 @@ function create_academic_term(array $input): array
     if (!$user || $user['role'] !== 'admin') {
         return ['ok' => false, 'message' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่สร้างภาคการศึกษาได้', 'errors' => ['form' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่สร้างภาคการศึกษาได้']];
     }
-    $name = trim((string) ($input['term_name'] ?? ''));
     $year = filter_var($input['academic_year'] ?? null, FILTER_VALIDATE_INT);
     $semester = (string) ($input['semester'] ?? '');
+    if ($semester === '3') $semester = 'summer';
+    $name = academic_term_code((int)$year, $semester);
     $startsOn = trim((string) ($input['term_starts_on'] ?? ''));
     $endsOn = trim((string) ($input['term_ends_on'] ?? ''));
     $errors = [];
-    if (text_length($name) < 3 || text_length($name) > 100) $errors['term_name'] = 'ชื่อภาคการศึกษาต้องมีความยาว 3–100 ตัวอักษร';
     if ($year === false || $year < 2500 || $year > 2700) $errors['academic_year'] = 'ปีการศึกษาต้องอยู่ระหว่าง 2500–2700';
     if (!in_array($semester, ['1', '2', 'summer'], true)) $errors['semester'] = 'กรุณาเลือกภาคการศึกษา';
-    $validTermDate = static function (string $value): bool {
-        return preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)
-            && checkdate((int)substr($value, 5, 2), (int)substr($value, 8, 2), (int)substr($value, 0, 4));
-    };
-    if (!$validTermDate($startsOn)) $errors['term_starts_on'] = 'กรุณาระบุวันเปิดภาคที่ถูกต้อง';
-    if (!$validTermDate($endsOn) || $endsOn < $startsOn) $errors['term_ends_on'] = 'วันปิดภาคต้องเป็นวันที่ถูกต้องและไม่อยู่ก่อนวันเปิดภาค';
+    if (!valid_iso_date($startsOn)) $errors['term_starts_on'] = 'กรุณาระบุวันเปิดภาคที่ถูกต้อง';
+    if (!valid_iso_date($endsOn) || $endsOn < $startsOn) $errors['term_ends_on'] = 'วันสิ้นสุดภาคต้องเป็นวันที่ถูกต้องและไม่อยู่ก่อนวันเปิดภาค';
+    $preset = nu_academic_presets()[(int)$year]['terms'][$semester] ?? null;
+    if ((!$preset || $preset['start'] !== $startsOn || $preset['end'] !== $endsOn) && ($input['dates_confirmed'] ?? '') !== '1') {
+        $errors['dates_confirmed'] = 'โปรดยืนยันว่าตรวจสอบช่วงวันที่กับประกาศของปีและหลักสูตรที่ใช้งานแล้ว';
+    }
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูลภาคการศึกษา', 'errors' => $errors];
 
     try {
