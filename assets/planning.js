@@ -88,7 +88,7 @@
     const content = q("[data-day-content]", dialog);
     let date = context.date;
     let opener;
-    const detailUrl = (event) => event.class_id ? `?page=class-detail&id=${event.class_id}` : `?page=schedule&term_id=${event.term_id}&room_id=${event.room_id}&week=${event.date}&selected=${event.schedule_id}`;
+    const detailUrl = (event) => event.class_id ? `?page=classes&class_id=${event.class_id}` : `?page=schedule&term_id=${event.term_id}&room_id=${event.room_id}&week=${event.date}&selected=${event.schedule_id}`;
     const minutes = (time) => { const [h, m] = time.split(":").map(Number); return h*60+m; };
 
     const render = () => {
@@ -98,6 +98,9 @@
       q("[data-day-count]", dialog).textContent = `${rows.length} รายการ · เวลาไทย · แผนและคลาสแสดงแยกประเภท`;
       const reportQuery = new URLSearchParams({page:"reports", date_from:date, date_to:date, room_id:room.value, term_id:context.term_id, source:context.source});
       q("[data-day-report]", dialog).href = `?${reportQuery}`;
+      const csvQuery = new URLSearchParams(reportQuery); csvQuery.delete('page'); csvQuery.set('download','report-csv');
+      q('[data-day-csv]',dialog).href = `?${csvQuery}`;
+      q('[data-day-print-room]',dialog).textContent = `ห้อง: ${room.selectedOptions[0].textContent}`;
       q('[data-day-once]', dialog).href = `?${new URLSearchParams({page:'calendar',month:date.slice(0,7),new_once:'1',once_date:date,room_id:room.value})}`;
       content.replaceChildren();
       if (!rows.length) {
@@ -135,6 +138,7 @@
           lanes[lane] = finish;
           const block = node("a", `${event.start_time} ${event.course_code}`, `day-time-block ${event.source === "schedule" ? "is-planned" : ""}`);
           block.href = detailUrl(event);
+          if (event.class_id) block.dataset.classId=String(event.class_id);
           block.title = `${event.start_time}–${event.end_time} ${event.course_name} · ${event.source_label}`;
           block.setAttribute("aria-label", block.title);
           block.style.left = `${(begin-rangeStart)/span*100}%`;
@@ -153,9 +157,17 @@
         const row = node("article", undefined, "day-event");
         const detail = node("div");
         detail.append(node("strong", `${event.course_code} · ${event.course_name}`), node("p", `${event.room_code} · ${event.lecturer_name}${event.section ? ` · กลุ่ม ${event.section}` : ""}`), node("span", event.source_label, `event-type ${event.source === "schedule" ? "is-planned" : ""}`));
-        const link = node("a", event.class_id ? "เปิดคลาส" : "ดูตาราง", "button button--secondary");
+        const link = node("a", event.class_id ? "QR / รายชื่อ" : "ดูตาราง", "button button--secondary");
         link.href = detailUrl(event);
-        row.append(node("strong", `${event.start_time}–${event.end_time}`), detail, link);
+        if (event.class_id) { link.dataset.classId=String(event.class_id); link.setAttribute('aria-haspopup','dialog'); }
+        const actions = node('div',undefined,'day-event-actions');
+        if (!event.class_id) {
+          const form=node('form'); form.method='post'; form.action=`?${new URLSearchParams({page:'calendar',month:date.slice(0,7)})}`;
+          Object.entries({csrf_token:context.csrf_token,action:'create_schedule_session',schedule_id:event.schedule_id,scheduled_date:date}).forEach(([name,value])=>{const input=node('input');input.type='hidden';input.name=name;input.value=String(value);form.append(input);});
+          const prepare=node('button','เตรียม QR คาบนี้','button button--primary');prepare.type='submit';form.append(prepare);actions.append(form);
+        }
+        actions.append(link);
+        row.append(node("strong", `${event.start_time}–${event.end_time}`), detail, actions);
         list.append(row);
       });
       content.append(list);

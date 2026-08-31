@@ -6,6 +6,7 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 
   const iconPaths = {
+    "book-open": '<path d="M12 7v14M3 3h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5v16h-5a4 4 0 0 0-4 2 4 4 0 0 0-4-2H3Z"/>',
     "layout-dashboard": '<rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/>',
     "scan-line": '<path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8h10M7 12h10M7 16h10"/>',
     "door-open": '<path d="M13 4h6a2 2 0 0 1 2 2v14M2 20h3M13 20h9M10 12v.01"/><path d="M13 4.56v15.88a1 1 0 0 1-1.24.97l-6-1.5A1 1 0 0 1 5 18.94V6.06a1 1 0 0 1 .76-.97l6-1.5A1 1 0 0 1 13 4.56Z"/>',

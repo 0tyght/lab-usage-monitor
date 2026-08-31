@@ -117,7 +117,7 @@ $expect(str_contains($onceForm,'id="one-off-dialog"') && str_contains($onceForm,
 preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$onceForm,$onceToken);
 $onceInput=['action'=>'create_one_off','one_off_request'=>$onceToken[1],'csrf_token'=>$csrf($onceForm),'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'class_date'=>'2030-05-06','starts_time'=>'09:00','ends_time'=>'10:00','course_code'=>'ONCEHTTP','course_name'=>'คาบครั้งเดียวทดสอบ'];
 [$status, , $onceLocation] = $request('/?page=calendar',$onceInput);
-$expect($status===302 && str_contains($onceLocation,'page=class-detail'), 'One-off save opens its QR details');
+$expect($status===302 && str_contains($onceLocation,'class_id=') && str_contains($onceLocation,'page=calendar'), 'One-off save opens its QR popup on the calendar');
 [$status, , $replayLocation] = $request('/?page=calendar',$onceInput);
 $expect($status===302 && $replayLocation===$onceLocation && (int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='ONCEHTTP'")->fetchColumn()===1, 'Duplicate POST returns the same class, not a second record');
 [$status,$availability] = $request('/?api=one-off-availability&date=2030-05-06&room_id='.$roomId.'&lecturer_user_id='.$adminId);
@@ -134,6 +134,27 @@ $expect(str_contains($onceCalendar,'ONCEHTTP') && str_contains($onceCalendar,'�
 [, $onceWeek] = $request('/?page=schedule&week=2030-05-06');
 $expect(str_contains($onceWeek,'ONCEHTTP') && str_contains($onceWeek,'คาบครั้งเดียวในสัปดาห์นี้'),'Weekly page includes standalone classes');
 echo "All term/planning/one-off HTTP checks passed: $checks\n";
+$onceClassId=(int)db()->query("SELECT id FROM class_sessions WHERE course_code='ONCEHTTP'")->fetchColumn();
+[$status, , $legacyLocation]=$request('/?page=class-detail&id='.$onceClassId);
+$expect($status===302 && str_contains($legacyLocation,'page=classes') && str_contains($legacyLocation,'class_id='), 'Old detail links redirect to the class hub popup');
+[$status,$fragment]=$request('/?fragment=class-panel&id='.$onceClassId);
+$expect($status===200 && str_contains($fragment,'data-class-qr=') && str_contains($fragment,'data-download-qr') && str_contains($fragment,'data-print-qr'), 'Authorized popup includes QR, PNG export and print controls');
+$expect(str_contains($fragment,'class-panel-attendance') && str_contains($fragment,'data-qr-poster'), 'QR poster and attendance occupy separate sections');
+[, $cleanCalendar]=$request('/?page=calendar&month=2030-05&room_id=999999&term_id=999999&source=schedule&q=impossible');
+$cleanDom=new DOMDocument();@$cleanDom->loadHTML('<?xml encoding="UTF-8">'.$cleanCalendar);$cleanXPath=new DOMXPath($cleanDom);
+$expect($cleanXPath->query('//section[@class="calendar-page"]//form')->length===0 && str_contains($cleanCalendar,'ONCEHTTP'), 'Calendar has no filter form and ignores obsolete filters');
+$expect(str_contains($cleanCalendar,'data-print-calendar') && str_contains($cleanCalendar,'download=report-csv'), 'Calendar exposes print and monthly export');
+$expect(str_contains($cleanCalendar,'data-day-csv') && str_contains($cleanCalendar,'data-print-day'), 'Daily timetable exposes selected-room export and print');
+$expect((bool)preg_match('/assets\/class-panel\.js\?v=[a-f0-9]{12}/',$cleanCalendar) && (bool)preg_match('/assets\/planning\.js\?v=[a-f0-9]{12}/',$cleanCalendar), 'Changed UI assets use content-versioned URLs');
+$cookies=[];
+[$status]=$request('/?fragment=class-panel&id='.$onceClassId);
+$expect($status===401,'Anonymous visitors cannot fetch QR or attendance fragments');
+// A second synthetic account cannot read the administrator's QR/attendance.
+db()->prepare("INSERT INTO users (full_name,email,role,password_hash,is_active,created_at,updated_at) VALUES ('อาจารย์ทดสอบสิทธิ์','other@example.invalid','lecturer',?,1,?,?)")->execute([password_hash('Test-Only-Other-2569',PASSWORD_DEFAULT),utc_now(),utc_now()]);
+[, $otherLogin]=$request('/?page=login');
+$request('/?page=login',['action'=>'login','csrf_token'=>$csrf($otherLogin),'email'=>'other@example.invalid','password'=>'Test-Only-Other-2569']);
+[$status,$otherFragment]=$request('/?fragment=class-panel&id='.$onceClassId);
+$expect($status===404 && !str_contains($otherFragment,'data-class-qr'),'Another lecturer cannot retrieve this class QR or attendance');
 $cookies=[];
 [$status] = $request('/?api=one-off-availability&date=2030-05-06&room_id='.$roomId);
 $expect($status===401,'Anonymous visitors cannot query booking availability');

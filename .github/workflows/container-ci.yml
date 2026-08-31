@@ -28,6 +28,7 @@ jobs:
           node --check assets/app.js
           node --check assets/planning.js
           node --check assets/one-off.js
+          node --check assets/class-panel.js
 
       - name: Verify production bootstrap
         run: |
