@@ -494,9 +494,19 @@ function list_class_sessions(array $filters = [], int $limit = 100): array
     }
 
     $status = (string) ($filters['status'] ?? '');
-    if (in_array($status, ['draft', 'open', 'closed', 'cancelled'], true)) {
+    if (in_array($status, ['draft', 'closed', 'cancelled'], true)) {
         $where[] = 'cs.status = :status';
         $params[':status'] = $status;
+    } elseif (in_array($status, ['open', 'scheduled', 'overdue'], true)) {
+        $where[] = "cs.status = 'open'";
+        $params[':status_now'] = utc_now();
+        if ($status === 'open') {
+            $where[] = 'cs.starts_at <= :status_now AND cs.ends_at >= :status_now';
+        } elseif ($status === 'scheduled') {
+            $where[] = 'cs.starts_at > :status_now';
+        } else {
+            $where[] = 'cs.ends_at < :status_now';
+        }
     }
     $search = trim((string) ($filters['q'] ?? ''));
     if ($search !== '') {

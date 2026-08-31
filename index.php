@@ -164,6 +164,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $token = trim((string) ($_POST['token'] ?? ''));
         $result = register_student_attendance($token, $_POST);
         if ($result['ok']) {
+            $_SESSION['attendance_success'] = [
+                'token' => $token,
+                'student_code' => strtoupper(trim((string)($_POST['student_code'] ?? ''))),
+                'duplicate' => (bool)($result['duplicate'] ?? false),
+            ];
             set_flash('success', $result['duplicate'] ?? false ? 'ลงชื่อไว้แล้ว' : 'ลงชื่อเข้าเรียนสำเร็จ', $result['message'] ?? 'ระบบบันทึกเวลาเรียบร้อย');
             redirect_to('student-checkin', ['token' => $token, 'success' => 1]);
         }
@@ -282,6 +287,8 @@ if ($page === 'student-checkin'):
     $token = trim((string) ($_GET['token'] ?? ''));
     $classSession = get_public_class_by_token($token);
     $nowUtc = time();
+    $attendanceReceipt = $_SESSION['attendance_success'] ?? [];
+    $hasSavedAttendance = isset($_GET['success']) && ($attendanceReceipt['token'] ?? null) === $token;
     $canCheckIn = $classSession
         && $classSession['status'] === 'open'
         && $nowUtc >= strtotime($classSession['starts_at'])
@@ -318,7 +325,7 @@ if ($page === 'student-checkin'):
                 <?php if ($flash): ?>
                     <div class="alert alert--<?= e($flash['type']) ?>" role="status"><strong><?= e($flash['title']) ?></strong><?php if ($flash['message']): ?><span><?= e($flash['message']) ?></span><?php endif; ?></div>
                 <?php endif; ?>
-                <?php if ($canCheckIn && !isset($_GET['success'])): ?>
+                <?php if ($canCheckIn && !$hasSavedAttendance): ?>
                     <div class="section-heading"><div><p class="eyebrow">สำหรับนักศึกษา</p><h2 id="attendance-title">ลงชื่อเข้าเรียน</h2><p>กรอกข้อมูลของตนเอง ระบบจะบันทึกเวลาปัจจุบันโดยอัตโนมัติ</p></div></div>
                     <?php if ($formErrors): ?><div class="alert alert--error" role="alert"><strong>กรุณาตรวจสอบข้อมูล</strong><span><?= e(implode(' ', array_values($formErrors))) ?></span></div><?php endif; ?>
                     <form method="post" class="form-stack" novalidate>
@@ -331,11 +338,11 @@ if ($page === 'student-checkin'):
                         <button class="button button--primary button--block" type="submit"><span data-icon="circle-check-big"></span>ยืนยันการลงชื่อเข้าเรียน</button>
                     </form>
                     <p class="privacy-note">ข้อมูลนี้ใช้สำหรับบันทึกการเข้าเรียนในคลาสนี้เท่านั้น โปรดอย่าส่ง QR Code ให้บุคคลอื่น</p>
-                <?php elseif (isset($_GET['success'])): ?>
-                    <div class="student-success"><span data-icon="circle-check-big"></span><h2 id="attendance-title">บันทึกเรียบร้อยแล้ว</h2><p>คุณสามารถปิดหน้านี้ได้ ระบบส่งข้อมูลให้อาจารย์แล้ว</p></div>
+                <?php elseif ($hasSavedAttendance): ?>
+                    <div class="student-success"><span data-icon="circle-check-big"></span><h2 id="attendance-title"><?= !empty($attendanceReceipt['duplicate']) ? 'ลงชื่อในคลาสนี้ไว้แล้ว' : 'บันทึกเรียบร้อยแล้ว' ?></h2><p>รหัสนักศึกษา <?= e($attendanceReceipt['student_code']) ?><br>คุณสามารถปิดหน้านี้ได้ ไม่ต้องลงชื่อซ้ำ</p></div>
                 <?php else: ?>
-                    <?php $waitingToOpen = $classSession['status'] === 'draft' || strtotime($classSession['starts_at']) > $nowUtc; ?>
-                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : 'ปิดรับการลงชื่อแล้ว' ?></h2><p><?= $waitingToOpen ? 'อาจารย์จะเปิดรับการลงชื่อเมื่อถึงเวลาที่เหมาะสม' : 'หากต้องการแก้ไขข้อมูล กรุณาติดต่ออาจารย์ผู้สอน' ?></p></div>
+                    <?php $waitingToOpen = $classSession['status'] === 'draft' || ($classSession['status'] === 'open' && strtotime($classSession['starts_at']) > $nowUtc); ?>
+                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : 'ปิดรับการลงชื่อแล้ว' ?></h2><p><?= $waitingToOpen ? 'เมื่อถึงเวลาเรียนหรืออาจารย์แจ้งให้ลงชื่อ กดตรวจสอบอีกครั้ง' : 'หากต้องการแก้ไขข้อมูล กรุณาติดต่ออาจารย์ผู้สอน' ?></p><?php if ($waitingToOpen): ?><a class="button button--secondary" href="?page=student-checkin&amp;token=<?= e($token) ?>">ตรวจสอบอีกครั้ง</a><?php endif; ?></div>
                 <?php endif; ?>
             </section>
         <?php endif; ?>
@@ -481,7 +488,11 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         <article class="metric"><span>คลาสวันนี้</span><strong><?= e($data['today_total']) ?></strong><small>คลาส</small></article>
                         <article class="metric metric--active"><span>เปิดรับลงชื่อ</span><strong><?= e($data['active_total']) ?></strong><small>คลาส</small></article>
                         <article class="metric"><span>ห้องที่กำลังใช้</span><strong><?= e($data['rooms_in_use']) ?></strong><small>จาก <?= e($data['room_total']) ?> ห้อง</small></article>
-                        <article class="metric <?= $data['issues_total'] ? 'metric--warning' : '' ?>"><span>คลาสเกินเวลา</span><strong><?= e($data['issues_total']) ?></strong><small><?= $data['issues_total'] ? 'ควรปิดรับลงชื่อ' : 'ไม่มีรายการ' ?></small></article>
+                        <?php if ($data['issues_total']): ?>
+                            <a class="metric metric--warning metric--link" href="?page=classes&amp;status=overdue" aria-label="ตรวจสอบคลาสเกินเวลา <?= e($data['issues_total']) ?> คลาส"><span>คลาสเกินเวลา</span><strong><?= e($data['issues_total']) ?></strong><small>ตรวจสอบและปิดรับลงชื่อ <span aria-hidden="true">→</span></small></a>
+                        <?php else: ?>
+                            <article class="metric"><span>คลาสเกินเวลา</span><strong>0</strong><small>ไม่มีรายการ</small></article>
+                        <?php endif; ?>
                     </section>
                     <div class="dashboard-grid">
                         <section class="section-block">
@@ -529,7 +540,11 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     $previousWeek = $weekStart->modify('-7 days')->format('Y-m-d');
                     $nextWeek = $weekStart->modify('+7 days')->format('Y-m-d');
                     $todayWeek = week_start_date()->format('Y-m-d');
-                    $scheduleQueryBase = ['page'=>'schedule','term_id'=>$termId,'room_id'=>$roomFilter,'weekend'=>$showWeekend ? 1 : 0];
+                    $scheduleQueryBase = ['page'=>'schedule','term_id'=>$termId,'room_id'=>$roomFilter,'q'=>(string)($_GET['q'] ?? ''),'weekend'=>$showWeekend ? 1 : 0];
+                    $weekSchedules = array_values(array_filter($schedules, static function (array $schedule) use ($weekStart, $dayCount): bool {
+                        $date = $weekStart->modify('+' . ($schedule['day_of_week'] - 1) . ' days')->format('Y-m-d');
+                        return $schedule['day_of_week'] <= $dayCount && $date >= $schedule['active_from'] && $date <= $schedule['active_until'];
+                    }));
                     ?>
                     <header class="page-header"><div><p class="eyebrow">วางแผนการใช้ห้องทั้งเทอม</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>ดูตารางรายสัปดาห์ คลิกช่องว่างเพื่อเพิ่มคาบ และตรวจการชนกันก่อนบันทึก</p></div><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a></header>
                     <?php if (!$term): ?>
@@ -547,11 +562,12 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         <div class="schedule-toolbar" aria-label="เปลี่ยนสัปดาห์">
                             <div class="button-group"><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$previousWeek])) ?>" aria-label="สัปดาห์ก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$todayWeek])) ?>">สัปดาห์นี้</a><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$nextWeek])) ?>" aria-label="สัปดาห์ถัดไป"><span data-icon="chevron-right"></span></a></div>
                             <div><strong><?= e($weekStart->format('d/m/Y')) ?> – <?= e($weekStart->modify('+' . ($dayCount - 1) . ' days')->format('d/m/Y')) ?></strong><small><?= e($term['name']) ?></small></div>
-                            <div class="segmented"><a class="<?= !$showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$weekStart->format('Y-m-d'),'weekend'=>0])) ?>">จ.–ศ.</a><a class="<?= $showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$weekStart->format('Y-m-d'),'weekend'=>1])) ?>">7 วัน</a></div>
+                            <div class="segmented" aria-label="จำนวนวันที่แสดง"><a class="<?= !$showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query(array_merge($scheduleQueryBase, ['week'=>$weekStart->format('Y-m-d'),'weekend'=>0]))) ?>" <?= !$showWeekend ? 'aria-current="page"' : '' ?>>จ.–ศ.</a><a class="<?= $showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query(array_merge($scheduleQueryBase, ['week'=>$weekStart->format('Y-m-d'),'weekend'=>1]))) ?>" <?= $showWeekend ? 'aria-current="page"' : '' ?>>7 วัน</a></div>
                         </div>
                         <div class="schedule-layout">
                             <section class="schedule-calendar-panel" aria-labelledby="weekly-calendar-title">
-                                <div class="section-heading"><div><h2 id="weekly-calendar-title">ตารางประจำสัปดาห์</h2><p>คลิกช่องเวลาเพื่อกรอกวันและเวลาในแบบฟอร์มอัตโนมัติ</p></div><span class="result-count"><?= count($schedules) ?> รายการ</span></div>
+                                <div class="section-heading"><div><h2 id="weekly-calendar-title">ตารางประจำสัปดาห์</h2><p>คลิกช่องเวลาเพื่อกรอกวันและเวลาในแบบฟอร์มอัตโนมัติ</p></div><span class="result-count"><?= count($weekSchedules) ?> รายการในสัปดาห์นี้</span></div>
+                                <?php if (!$weekSchedules): ?><p class="inline-note">ไม่พบตารางในสัปดาห์และตัวกรองที่เลือก ลองเปลี่ยนสัปดาห์หรือปรับตัวกรอง</p><?php endif; ?>
                                 <div class="schedule-legend"><span><i class="legend-swatch legend-swatch--class"></i>มีตารางเรียน</span><span><i class="legend-swatch legend-swatch--selected"></i>รายการที่เลือก</span><span><i class="legend-swatch legend-swatch--today"></i>วันนี้</span></div>
                                 <div class="schedule-scroll" role="region" aria-label="ตารางเรียนรายสัปดาห์" tabindex="0">
                                     <div class="schedule-week" style="--day-count:<?= e($dayCount) ?>">
@@ -628,14 +644,15 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     <header class="page-header"><div><p class="eyebrow">สำหรับอาจารย์และผู้ดูแล</p><h1>คลาสเรียนและ QR Code</h1><p>สร้างคลาส เปิด QR ให้นักศึกษาลงชื่อ และติดตามจำนวนผู้เข้าเรียนแบบทันที</p></div></header>
                     <div class="class-management-layout">
                         <section class="section-block" aria-labelledby="class-list-title">
-                            <div class="section-heading"><div><h2 id="class-list-title">คลาสของฉัน</h2><p>คลาสที่เปิดล่าสุดอยู่ด้านบน</p></div><span class="result-count"><?= count($classes) ?> คลาส</span></div>
+                            <div class="section-heading"><div><h2 id="class-list-title"><?= $user['role'] === 'admin' ? 'คลาสทั้งหมด' : 'คลาสของฉัน' ?></h2><p>คลาสที่เปิดรับและแบบร่างอยู่ด้านบน</p></div><span class="result-count">แสดง <?= count($classes) ?> คลาส<?= count($classes) === 100 ? ' (สูงสุด 100)' : '' ?></span></div>
                             <form method="get" class="filter-bar filter-bar--compact">
                                 <input type="hidden" name="page" value="classes">
                                 <label class="search-field"><span data-icon="search"></span><span class="sr-only">ค้นหา</span><input name="q" value="<?= e($classFilters['q']) ?>" placeholder="ค้นหารหัสวิชา ชื่อวิชา หรือห้อง"></label>
-                                <label><span class="sr-only">สถานะ</span><select name="status"><option value="">ทุกสถานะ</option><?php foreach (['draft'=>'แบบร่าง','open'=>'เปิดรับลงชื่อ','closed'=>'ปิดรับแล้ว','cancelled'=>'ยกเลิก'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= $classFilters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                                <label><span class="sr-only">สถานะ</span><select name="status"><option value="">ทุกสถานะ</option><?php foreach (['draft'=>'แบบร่าง','scheduled'=>'รอเวลาเริ่ม','open'=>'เปิดรับลงชื่อ','overdue'=>'หมดเวลาลงชื่อ','closed'=>'ปิดรับแล้ว','cancelled'=>'ยกเลิก'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= $classFilters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                                 <button class="button button--secondary" type="submit">ค้นหา</button>
+                                <?php if (trim($classFilters['q']) !== '' || $classFilters['status'] !== ''): ?><a class="button button--ghost" href="?page=classes">ล้างตัวกรอง</a><?php endif; ?>
                             </form>
-                            <?php render_class_table($classes); ?>
+                            <?php render_class_table($classes, trim($classFilters['q']) !== '' || $classFilters['status'] !== ''); ?>
                         </section>
                         <section id="new-class" class="form-panel form-panel--sticky" aria-labelledby="new-class-title">
                             <div class="section-heading"><div><p class="eyebrow">สร้าง QR ใหม่</p><h2 id="new-class-title">สร้างคลาสเรียน</h2><p>QR หนึ่งรหัสใช้กับคลาสนี้เท่านั้น</p></div></div>
@@ -691,7 +708,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     </form>
                     <section class="section-block">
                         <div class="section-heading"><div><h2>รายการลงชื่อทั้งหมด</h2><p>เรียงจากเวลาล่าสุด</p></div><span class="result-count">พบ <?= e($result['total']) ?> รายการ</span></div>
-                        <?php render_attendance_table($result['items'], true); ?>
+                        <?php render_attendance_table($result['items'], true, (bool)array_filter($filters, static fn(string $value): bool => trim($value) !== '')); ?>
                     </section>
 
                 <?php elseif ($page === 'rooms'): ?>
@@ -722,7 +739,19 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                     <section class="section-block">
                         <div class="section-heading"><div><h2>รายละเอียดคลาส</h2><p>ข้อมูลบนหน้าจอและไฟล์ CSV ใช้ช่วงเวลาและห้องเดียวกัน</p></div><span class="result-count">พบ <?= count($reportRows) ?> รายการ</span></div>
                         <?php if(!$reportRows): ?><div class="empty-state"><span data-icon="inbox"></span><strong>ไม่พบข้อมูลในช่วงที่เลือก</strong><span>ลองเปลี่ยนช่วงเวลาหรือเลือกทุกห้อง</span></div><?php else: ?>
-                        <div class="table-wrap"><table class="data-table"><thead><tr><th>รายวิชา</th><th>วันและเวลา</th><th>ห้อง</th><th>ผู้สอน</th><th>ผู้ลงชื่อ</th><th>สถานะ</th></tr></thead><tbody><?php foreach($reportRows as $item): $reportStatus=class_display_status($item); ?><tr><td><strong><?= e($item['course_code']) ?></strong><small><?= e($item['course_name']) ?><?= $item['section']?' · กลุ่ม '.e($item['section']):'' ?></small></td><td><strong><?= e(thai_datetime($item['starts_at'])) ?></strong><small>ถึง <?= e(thai_datetime($item['ends_at'], false)) ?></small></td><td><?= e($item['room_code']) ?></td><td><?= e($item['lecturer_name']) ?></td><td><strong><?= e($item['attendance_count']) ?></strong> คน</td><td><span class="status status--<?= e($reportStatus) ?>"><span></span><?= e(status_label($reportStatus)) ?></span></td></tr><?php endforeach; ?></tbody></table></div>
+                        <div class="table-wrap"><table class="data-table">
+                            <thead><tr><th>รายวิชา</th><th>วันและเวลา</th><th>ห้อง</th><th>ผู้สอน</th><th>ผู้ลงชื่อ</th><th>สถานะ</th></tr></thead>
+                            <tbody><?php foreach ($reportRows as $item): $reportStatus = class_display_status($item); ?>
+                                <tr>
+                                    <td data-label="รายวิชา"><strong><?= e($item['course_code']) ?></strong><small><?= e($item['course_name']) ?><?= $item['section'] ? ' · กลุ่ม ' . e($item['section']) : '' ?></small></td>
+                                    <td data-label="วันและเวลา"><strong><?= e(thai_datetime($item['starts_at'])) ?></strong><small>ถึง <?= e(thai_datetime($item['ends_at'], false)) ?></small></td>
+                                    <td data-label="ห้อง"><?= e($item['room_code']) ?></td>
+                                    <td data-label="ผู้สอน"><?= e($item['lecturer_name']) ?></td>
+                                    <td data-label="ผู้ลงชื่อ"><span><?= e($item['attendance_count']) ?> คน</span></td>
+                                    <td data-label="สถานะ"><span class="status status--<?= e($reportStatus) ?>"><span></span><?= e(status_label($reportStatus)) ?></span></td>
+                                </tr>
+                            <?php endforeach; ?></tbody>
+                        </table></div>
                         <?php endif; ?>
                     </section>
 
@@ -739,10 +768,12 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
 </html>
 
 <?php
-function render_class_table(array $items): void
+function render_class_table(array $items, bool $filtered = false): void
 {
     if (!$items) {
-        echo '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสแรกเพื่อรับ QR Code สำหรับนักศึกษา</span><a class="button button--secondary" href="?page=classes#new-class">สร้างคลาสแรก</a></div>';
+        echo $filtered
+            ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบคลาสที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้นหรือสถานะ เพื่อดูคลาสที่ต้องการ</span><a class="button button--secondary" href="?page=classes">ล้างตัวกรอง</a></div>'
+            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสแรกเพื่อรับ QR Code สำหรับนักศึกษา</span><a class="button button--secondary" href="?page=classes#new-class">สร้างคลาสแรก</a></div>';
         return;
     }
 ?>
@@ -768,10 +799,12 @@ function render_class_table(array $items): void
 <?php
 }
 
-function render_attendance_table(array $items, bool $showClass): void
+function render_attendance_table(array $items, bool $showClass, bool $filtered = false): void
 {
     if (!$items) {
-        echo '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีนักศึกษาลงชื่อ</strong><span>รายการจะปรากฏที่นี่เมื่อมีการส่งแบบฟอร์มผ่าน QR Code</span></div>';
+        echo $filtered
+            ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบการลงชื่อที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้น ห้อง หรือช่วงวันที่</span><a class="button button--secondary" href="?page=records">ล้างตัวกรอง</a></div>'
+            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีนักศึกษาลงชื่อ</strong><span>รายการจะปรากฏที่นี่เมื่อมีการส่งแบบฟอร์มผ่าน QR Code</span></div>';
         return;
     }
 ?>

@@ -204,6 +204,7 @@
   }
 
   function setFormBusy(form, busy) {
+    const loadingLabel = form.method.toLowerCase() === "get" ? "กำลังค้นหา…" : "กำลังบันทึก…";
     form.dataset.submitting = busy ? "true" : "false";
     form.setAttribute("aria-busy", String(busy));
     qa('button[type="submit"], input[type="submit"]', form).forEach((button) => {
@@ -211,9 +212,9 @@
         button.dataset.originalLabel = button.value || button.textContent;
         button.disabled = true;
         if (button instanceof HTMLInputElement) {
-          button.value = button.dataset.loadingLabel || "กำลังบันทึก…";
+          button.value = button.dataset.loadingLabel || loadingLabel;
         } else {
-          button.textContent = button.dataset.loadingLabel || "กำลังบันทึก…";
+          button.textContent = button.dataset.loadingLabel || loadingLabel;
         }
       } else {
         button.disabled = false;

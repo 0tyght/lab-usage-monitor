@@ -24,7 +24,7 @@ jobs:
 
       - name: Lint PHP and JavaScript
         run: |
-          docker run --rm --entrypoint sh lums-ci:${{ github.sha }} -c 'find . -type f -name "*.php" -exec php -l {} \;'
+          docker run --rm --entrypoint sh lums-ci:${{ github.sha }} -c 'find . -type f -name "*.php" -print0 | xargs -0 -n1 php -l'
           node --check assets/app.js
 
       - name: Verify production bootstrap
@@ -34,6 +34,9 @@ jobs:
             -e LUMS_ADMIN_EMAIL=admin@example.invalid \
             -e LUMS_ADMIN_PASSWORD=CiOnlyPassword-2569 \
             lums-ci:${{ github.sha }} scripts/init.php
+
+      - name: Test UX status filters and lecturer scope
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/ux-regression.php
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
@@ -46,4 +49,3 @@ jobs:
           docker tag lums-ci:${{ github.sha }} "${IMAGE_NAME}:latest"
           docker push "${IMAGE_NAME}:${{ github.sha }}"
           docker push "${IMAGE_NAME}:latest"
-
