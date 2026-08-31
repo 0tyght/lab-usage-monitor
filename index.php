@@ -101,6 +101,27 @@ function week_start_date(?string $value = null): DateTimeImmutable
     return $date->modify('monday this week');
 }
 
+if (($_GET['api'] ?? '') === 'one-off-availability') {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    $viewer = current_user();
+    if (!$viewer || !in_array($viewer['role'], ['admin','lecturer'], true)) {
+        http_response_code(401);
+        echo json_encode(['ok'=>false,'message'=>'กรุณาเข้าสู่ระบบอีกครั้ง']);
+        exit;
+    }
+    try {
+        $roomId = (int)($_GET['room_id'] ?? 0);
+        $lecturerId = one_off_lecturer_id($_GET);
+        if (!array_filter(list_rooms(), static fn(array $r): bool => $r['id']===$roomId && $r['status']==='available') || !array_filter(list_lecturers(), static fn(array $u): bool => $u['id']===$lecturerId)) throw new InvalidArgumentException();
+        echo json_encode(['ok'=>true,'busy'=>one_off_busy_times($roomId,$lecturerId,(string)($_GET['date'] ?? ''))], JSON_UNESCAPED_UNICODE);
+    } catch (Throwable) {
+        http_response_code(422);
+        echo json_encode(['ok'=>false,'message'=>'ตรวจเวลาไม่สำเร็จ กรุณาตรวจวันที่ ห้อง และผู้สอน แล้วลองอีกครั้ง'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
 if (($_GET['health'] ?? '') === '1') {
     header('Cache-Control: no-store');
     header('Vary: Origin');
@@ -205,6 +226,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'logout') {
         logout_user();
         redirect_to('login');
+    }
+
+    if ($action === 'create_one_off') {
+        $requestId = (string)($_POST['one_off_request'] ?? '');
+        $known = $_SESSION['one_off_requests'][$requestId] ?? null;
+        if (is_int($known) && $known > 0 && get_class_session($known)) redirect_to('class-detail', ['id'=>$known]);
+        $result = $known === 0 ? create_one_off_session($_POST) : ['ok'=>false,'errors'=>['form'=>'แบบฟอร์มหมดอายุ กรุณาเปิดหน้าต่างเพิ่มคาบใหม่']];
+        if ($result['ok']) {
+            $_SESSION['one_off_requests'][$requestId] = (int)$result['id'];
+            set_flash('success','เพิ่มคาบครั้งเดียวแล้ว','บันทึกเฉพาะวันที่เลือก ไม่มีการทำซ้ำ และเตรียม QR สำหรับคาบนี้แล้ว');
+            redirect_to('class-detail',['id'=>(int)$result['id']]);
+        }
+        $_SESSION['one_off_errors'] = $result['errors'] ?? ['form'=>'บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง'];
+        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','class_date','starts_time','ends_time','course_code','course_name','section','notes','one_off_request']));
+        $returnPage = ($_GET['page'] ?? '') === 'schedule' ? 'schedule' : 'calendar';
+        $context = array_intersect_key($_GET,array_flip(['month','term_id','room_id','week','weekend','q','source']));
+        redirect_to($returnPage,$context+['new_once'=>1]);
     }
 
     if ($action === 'create_class') {
@@ -457,6 +495,9 @@ $nav = [
     'reports' => ['รายงาน', 'chart-no-axes-combined'],
 ];
 $navPage = $page === 'class-detail' ? 'classes' : $page;
+$oneOffContext = array_intersect_key($_GET,array_flip(['month','term_id','room_id','week','weekend','q','source']));
+$oneOffReturnUrl = '?' . http_build_query(['page'=>$page === 'schedule' ? 'schedule' : 'calendar']+$oneOffContext);
+$oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 ?>
 <!doctype html>
 <html lang="th">
@@ -581,7 +622,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         return $schedule['day_of_week'] <= $dayCount && $date >= $schedule['active_from'] && $date <= $schedule['active_until'];
                     }));
                     ?>
-                    <header class="page-header"><div><p class="eyebrow">วางแผนการใช้ห้องทั้งเทอม</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>ดูตารางรายสัปดาห์ คลิกช่องว่างเพื่อเพิ่มคาบ และตรวจการชนกันก่อนบันทึก</p></div><?php if ($user['role']==='admin'): ?><div class="schedule-header-actions"><?php if ($term): ?><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a><?php endif; ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings"><span data-icon="plus"></span>เพิ่มภาคการศึกษา</a></div><?php endif; ?></header>
+                    <header class="page-header"><div><p class="eyebrow">ตารางทั้งภาคและคาบครั้งเดียว</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>จัดตารางซ้ำรายสัปดาห์ หรือเพิ่มคาบเฉพาะวันโดยไม่ต้องมีภาคการศึกษา</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>เพิ่มคาบครั้งเดียว</a><?php if ($user['role']==='admin'): ?><?php if ($term): ?><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a><?php endif; ?><a class="button button--secondary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษา</a><?php endif; ?></div></header>
                     <?php if ($term): ?><nav class="academic-year-slots" aria-label="3 ภาคในปีการศึกษาที่เลือก">
                         <?php foreach (semester_labels() as $semesterKey=>$semesterText): $slotTerm = null; foreach ($terms as $candidate) if ($candidate['academic_year'] === $term['academic_year'] && (string)$candidate['semester'] === (string)$semesterKey) $slotTerm = $candidate; ?>
                             <?php if ($slotTerm): ?><a href="?page=schedule&amp;term_id=<?= $slotTerm['id'] ?>" <?= $slotTerm['id']===$termId?'aria-current="page"':'' ?>><strong><?= e($slotTerm['name']) ?></strong><small><?= e($semesterText) ?> · กำหนดวันที่แล้ว</small></a><?php elseif ($user['role']==='admin'): ?><a href="?<?= e(http_build_query(['page'=>'schedule', 'new_term'=>1, 'academic_year'=>$term['academic_year'], 'semester'=>$semesterKey])) ?>"><strong><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?></strong><small><?= e($semesterText) ?> · เพิ่มช่วงวันที่</small></a><?php else: ?><span><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?> · ยังไม่กำหนดวันที่</span><?php endif; ?>
@@ -673,6 +714,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         </div>
                     </div>
                     <?php endif; ?>
+                    <?php require __DIR__ . '/views/one-off-week.php'; ?>
                     <?php if ($user['role']==='admin'): ?>
                         <?php require __DIR__ . '/views/term-dialog.php'; ?>
                     <?php endif; ?>
@@ -769,10 +811,12 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
             </main>
         </div>
     </div>
+    <?php if (in_array($page,['schedule','calendar'],true)): require __DIR__.'/views/one-off-dialog.php'; endif; ?>
     <div class="nav-scrim" data-nav-scrim hidden></div>
     <script src="assets/qrcode.min.js" defer></script>
     <script src="assets/app.js" defer></script>
     <script src="assets/planning.js" defer></script>
+    <script src="assets/one-off.js" defer></script>
 </body>
 </html>
 

@@ -94,13 +94,14 @@ function local_period_bounds(string $period = 'day'): array
 
 function local_datetime_to_utc(string $value): ?string
 {
+    if (str_contains($value, "\0")) return null;
     $value = trim($value);
-    if ($value === '') {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/D', $value)) {
         return null;
     }
 
     $timezone = new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok'));
-    $date = DateTimeImmutable::createFromFormat('Y-m-d\TH:i', $value, $timezone);
+    $date = DateTimeImmutable::createFromFormat('!Y-m-d\TH:i', $value, $timezone);
     $errors = DateTimeImmutable::getLastErrors();
     if (!$date || (is_array($errors) && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
         return null;
@@ -295,6 +296,9 @@ function validate_schedule_input(array $input, int $ignoreId = 0): array
         return ['ok'=>false, 'message'=>$message, 'errors'=>['form'=>$message]];
     }
 
+    if (recurring_conflicts_with_one_off((int)$roomId,(int)$lecturerId,(int)$day,$activeFrom,$activeUntil,$startsTime,$endsTime)) {
+        return ['ok'=>false,'message'=>'ห้องหรือผู้สอนมีคาบครั้งเดียวในช่วงนี้แล้ว','errors'=>['form'=>'ห้องหรือผู้สอนมีคาบครั้งเดียวในช่วงนี้แล้ว กรุณาเปลี่ยนช่วงเวลา']];
+    }
     return ['ok'=>true, 'data'=>[
         'term_id'=>(int)$termId, 'room_id'=>(int)$roomId, 'lecturer_user_id'=>(int)$lecturerId,
         'course_code'=>$courseCode, 'course_name'=>$courseName, 'section'=>$section === '' ? null : $section,
@@ -574,6 +578,7 @@ function create_class_session(array $input): array
     }
 
     $roomId = filter_var($input['room_id'] ?? null, FILTER_VALIDATE_INT);
+    $lecturerId = one_off_lecturer_id($input);
     $courseCode = strtoupper(trim((string) ($input['course_code'] ?? '')));
     $courseName = trim((string) ($input['course_name'] ?? ''));
     $section = trim((string) ($input['section'] ?? ''));
@@ -594,6 +599,9 @@ function create_class_session(array $input): array
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูลคลาส', 'errors' => $errors];
 
     $connection = db();
+    $lecturer = $connection->prepare("SELECT id FROM users WHERE id=? AND is_active=1 AND role IN ('admin','lecturer')");
+    $lecturer->execute([$lecturerId]);
+    if (!$lecturer->fetchColumn()) return ['ok'=>false,'errors'=>['lecturer_user_id'=>'กรุณาเลือกผู้สอนที่ใช้งานได้']];
     $room = $connection->prepare("SELECT id, status FROM rooms WHERE id = :id LIMIT 1");
     $room->execute([':id' => $roomId]);
     $roomRow = $room->fetch();
@@ -615,7 +623,7 @@ function create_class_session(array $input): array
     );
     $insert->execute([
         ':room_id' => $roomId,
-        ':lecturer_id' => $operator['id'],
+        ':lecturer_id' => $lecturerId,
         ':course_code' => $courseCode,
         ':course_name' => $courseName,
         ':section' => $section === '' ? null : $section,

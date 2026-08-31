@@ -98,6 +98,7 @@
       q("[data-day-count]", dialog).textContent = `${rows.length} รายการ · เวลาไทย · แผนและคลาสแสดงแยกประเภท`;
       const reportQuery = new URLSearchParams({page:"reports", date_from:date, date_to:date, room_id:room.value, term_id:context.term_id, source:context.source});
       q("[data-day-report]", dialog).href = `?${reportQuery}`;
+      q('[data-day-once]', dialog).href = `?${new URLSearchParams({page:'calendar',month:date.slice(0,7),new_once:'1',once_date:date,room_id:room.value})}`;
       content.replaceChildren();
       if (!rows.length) {
         const empty = node("div", undefined, "empty-state");

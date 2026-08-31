@@ -6,6 +6,18 @@
 .term-code-preview small { width: 100%; color: var(--muted); }
 .term-dialog .inline-note { margin: 0; }
 .term-dialog .helper-text { margin: 0; }
+.one-off-dialog { width: min(760px, calc(100% - 32px)); }
+.one-off-time-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin: 24px 0 8px; }
+.one-off-time-heading small { color: var(--muted); }
+.one-off-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 12px 0 16px; }
+.one-off-slots button { min-height: 56px; padding: 8px 4px; border: 1px solid var(--border); border-radius: 4px; background: var(--surface); color: var(--text); cursor: pointer; font: inherit; font-size: 12px; }
+.one-off-slots small { display: block; }
+.one-off-slots button:disabled { background: var(--surface-subtle); color: var(--muted); cursor: not-allowed; }
+.one-off-slots button[aria-pressed="true"] { border-color: var(--brand-600); background: var(--brand-50); color: var(--brand-700); }
+.one-off-dialog [hidden] { display: none !important; }
+.one-off-dialog [data-once-retry] { margin-bottom: 16px; }
+.one-off-dialog button[type="submit"]:disabled { opacity: .5; cursor: not-allowed; }
+.one-off-week { margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--border); }
 .academic-year-slots { display: flex; flex-wrap: wrap; gap: 8px; margin: -8px 0 24px; }
 .academic-year-slots a { padding: 8px 12px; border: 1px solid var(--border); border-radius: 4px; min-height: 44px; text-decoration: none; }
 .academic-year-slots a[aria-current] { border-color: var(--brand-600); background: var(--brand-50); }

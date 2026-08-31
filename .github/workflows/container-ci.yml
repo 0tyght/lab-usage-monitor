@@ -27,6 +27,7 @@ jobs:
           docker run --rm --entrypoint sh lums-ci:${{ github.sha }} -c 'find . -type f -name "*.php" -print0 | xargs -0 -n1 php -l'
           node --check assets/app.js
           node --check assets/planning.js
+          node --check assets/one-off.js
 
       - name: Verify production bootstrap
         run: |
@@ -44,6 +45,9 @@ jobs:
 
       - name: Test academic calendar, merged occurrences and report calculations
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/planning-regression.php
+
+      - name: Test one-off bookings and recurring conflicts
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/one-off-regression.php
 
       - name: Verify HTTP serving and private file isolation
         run: |

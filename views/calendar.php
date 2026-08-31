@@ -23,7 +23,7 @@ $dayRoomId = (int)($_GET['day_room_id'] ?? $calendarFilters['room_id']);
 $dayRows = array_values(array_filter($calendarRows, static fn(array $r): bool => $r['date'] === $dayDate && (!$dayRoomId || $r['room_id'] === $dayRoomId)));
 $calendarCloseUrl = '?' . http_build_query($calendarQuery);
 ?>
-<header class="page-header"><div><p class="eyebrow">มองทั้งเดือน · เจาะรายละเอียดรายวัน</p><h1>ปฏิทินการใช้ห้อง</h1><p>วันที่มีรายการจะแสดงจำนวน ชี้เพื่อดูสรุป หรือคลิกเพื่อเปิดตารางเวลา</p></div><a class="button button--secondary" href="?page=schedule"><span data-icon="calendar-days"></span>จัดตารางรายสัปดาห์</a></header>
+<header class="page-header"><div><p class="eyebrow">มองทั้งเดือน · เจาะรายละเอียดรายวัน</p><h1>ปฏิทินการใช้ห้อง</h1><p>วันที่มีรายการจะแสดงจำนวน ชี้เพื่อดูสรุป หรือคลิกเพื่อเปิดตารางเวลา</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>เพิ่มคาบครั้งเดียว</a><a class="button button--secondary" href="?page=schedule"><span data-icon="calendar-days"></span>จัดตารางรายสัปดาห์</a></div></header>
 <form method="get" class="filter-bar calendar-filters">
     <input type="hidden" name="page" value="calendar">
     <label><span>เดือนที่ต้องการดู</span><input type="month" name="month" value="<?= e($calendarFilters['month']) ?>" required></label>
@@ -60,6 +60,7 @@ $calendarCloseUrl = '?' . http_build_query($calendarQuery);
             <label class="field"><span>ห้องที่ต้องการดู</span><select name="day_room_id"><option value="0">ทุกห้อง</option><?php foreach ($calendarRooms as $r): ?><option value="<?= $r['id'] ?>" <?= $dayRoomId===$r['id']?'selected':'' ?>><?= e($r['code'].' — '.$r['name']) ?></option><?php endforeach; ?></select></label><button class="button button--secondary" type="submit">แสดงห้อง</button>
         </form>
         <p data-day-count aria-live="polite"><?= count($dayRows) ?> รายการ</p>
+        <p><a class="button button--secondary" data-day-once href="?<?= e(http_build_query(array_replace($calendarQuery,['new_once'=>1,'once_date'=>$dayDate,'room_id'=>$dayRoomId]))) ?>">เพิ่มคาบครั้งเดียวในวันนี้</a></p>
         <div data-day-content>
             <?php if (!$dayRows): ?><div class="empty-state"><strong>ไม่พบรายการในห้องและวันที่เลือก</strong><span>ลองเลือกทุกห้อง หรือเลือกวันอื่น</span></div><?php else: ?><div class="table-wrap"><table class="data-table"><thead><tr><th>เวลา</th><th>ห้อง</th><th>รายวิชา</th><th>ผู้สอน</th></tr></thead><tbody><?php foreach ($dayRows as $r): ?><tr><td><?= e($r['start_time'].'–'.$r['end_time']) ?></td><td><?= e($r['room_code']) ?></td><td><?= e($r['course_code'].' '.$r['course_name']) ?></td><td><?= e($r['lecturer_name']) ?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
         </div>
