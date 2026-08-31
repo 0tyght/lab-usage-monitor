@@ -55,6 +55,12 @@
             pending.start=Math.min(pending.start,a);pending.end=Math.max(pending.end,a+60);addRange();
           }else{pending={day,start:a,end:a+60};renderPending();renderGrid();}
         });
+        button.addEventListener('keydown',event=>{
+          if(event.key==='Enter' || event.key===' '){event.preventDefault();button.click();return;}
+          const nextMinute=a+(event.key==='ArrowRight'?60:event.key==='ArrowLeft'?-60:0);
+          const nextDay=day+(event.key==='ArrowDown'?1:event.key==='ArrowUp'?-1:0);
+          if(nextMinute!==a || nextDay!==day){event.preventDefault();grid.querySelector(`button[data-day="${nextDay}"][data-minute="${nextMinute}"]:not(:disabled)`)?.focus({preventScroll:true});}
+        });
         row.append(button);
       }
       grid.append(row);
