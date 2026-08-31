@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "status": "offline",
-  "origin": "",
-  "gatewayId": "",
-  "updatedAt": "2026-08-31T01:58:31.498Z"
+  "status": "online",
+  "origin": "https://motel-notified-villas-withdrawal.trycloudflare.com",
+  "gatewayId": "be918d4e30f35745c4c2880b36426cc0",
+  "updatedAt": "2026-08-31T02:32:43.354Z"
 }
