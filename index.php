@@ -102,10 +102,17 @@ function week_start_date(?string $value = null): DateTimeImmutable
 }
 
 if (($_GET['health'] ?? '') === '1') {
+    header('Cache-Control: no-store');
+    header('Vary: Origin');
+    $gatewayOrigin = (string) app_config('app.gateway_origin', '');
+    if ($gatewayOrigin !== '' && ($_SERVER['HTTP_ORIGIN'] ?? '') === $gatewayOrigin) {
+        // Only the status endpoint is cross-origin; login and records stay same-origin.
+        header('Access-Control-Allow-Origin: ' . $gatewayOrigin);
+    }
     try {
         db()->query('SELECT 1')->fetchColumn();
         header('Content-Type: application/json; charset=UTF-8');
-        echo json_encode(['status'=>'ok','service'=>'lums'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        echo json_encode(['status'=>'ok','service'=>'lums','gatewayId'=>(string)app_config('app.gateway_id', '')], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     } catch (Throwable) {
         http_response_code(503);
         header('Content-Type: application/json; charset=UTF-8');

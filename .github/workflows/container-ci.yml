@@ -38,17 +38,29 @@ jobs:
       - name: Test UX status filters and lecturer scope
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/ux-regression.php
 
+      - name: Test free online gateway
+        run: node --test tests/gateway.test.mjs
+
       - name: Verify HTTP serving and private file isolation
         run: |
           docker run --rm --entrypoint apache2ctl lums-ci:${{ github.sha }} -t
           docker run -d --name lums-http-check \
             -e APP_ENV=production \
             -e APP_DEBUG=false \
+            -e APP_URL=https://0tyght.github.io/lab-usage-monitor \
+            -e LUMS_GATEWAY_ORIGIN=https://0tyght.github.io \
+            -e LUMS_GATEWAY_ID=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa \
+            -e LUMS_SECURE_COOKIES=true \
             -e LUMS_ADMIN_EMAIL=admin@example.invalid \
             -e LUMS_ADMIN_PASSWORD=CiOnlyPassword-2569 \
             lums-ci:${{ github.sha }}
           trap 'docker logs lums-http-check; docker rm -f lums-http-check' EXIT
           docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/http-smoke.php
+          docker exec lums-http-check php scripts/online-preflight.php
+          if docker exec -e LUMS_SECURE_COOKIES=false lums-http-check php scripts/online-preflight.php; then
+            echo 'Unsafe online configuration was accepted'
+            exit 1
+          fi
 
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'

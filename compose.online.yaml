@@ -1,0 +1,35 @@
+name: lums-online
+
+services:
+  app:
+    build: .
+    image: lums-app:online
+    env_file: .env.online
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      APP_TIMEZONE: Asia/Bangkok
+      LUMS_DB_DSN: sqlite:/var/www/html/storage/lums.sqlite
+      LUMS_SESSION_PATH: /var/www/html/storage/sessions
+      LUMS_SECURE_COOKIES: "true"
+    ports:
+      - "127.0.0.1:8088:80"
+    volumes:
+      - online_storage:/var/www/html/storage
+    restart: "no"
+    healthcheck:
+      test: ["CMD", "php", "-r", "exit(@file_get_contents('http://127.0.0.1/?health=1') === false ? 1 : 0);"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+  tunnel:
+    image: cloudflare/cloudflared:latest
+    command: ["tunnel", "--no-autoupdate", "--url", "http://app:80"]
+    depends_on:
+      app:
+        condition: service_healthy
+    restart: "no"
+
+volumes:
+  online_storage:

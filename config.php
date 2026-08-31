@@ -35,6 +35,8 @@ return [
         'debug' => $envBool('APP_DEBUG', true),
         'timezone' => $env('APP_TIMEZONE', 'Asia/Bangkok'),
         'base_url' => rtrim((string) $env('APP_URL', $defaultBaseUrl), '/'),
+        'gateway_origin' => $env('LUMS_GATEWAY_ORIGIN', ''),
+        'gateway_id' => $env('LUMS_GATEWAY_ID', ''),
     ],
     'database' => [
         'dsn' => $env('LUMS_DB_DSN', 'sqlite:' . $databasePath),

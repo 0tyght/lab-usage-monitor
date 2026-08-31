@@ -18,18 +18,19 @@ $expect = static function (bool $passed, string $message) use (&$checks): void {
     $checks++;
     echo "PASS: $message\n";
 };
-$request = static function (string $path, string $method = 'GET') use ($base): array {
+$request = static function (string $path, string $method = 'GET', string $origin = '') use ($base): array {
     $context = stream_context_create(['http' => [
         'method' => $method,
         'timeout' => 5,
         'ignore_errors' => true,
         'follow_location' => 0,
+        'header' => $origin !== '' ? 'Origin: ' . $origin . "\r\n" : '',
     ]]);
     $body = @file_get_contents($base . $path, false, $context);
     $headers = $http_response_header ?? [];
     preg_match('/^HTTP\/\S+ (\d{3})/', $headers[0] ?? '', $match);
 
-    return [(int)($match[1] ?? 0), $body === false ? '' : $body];
+    return [(int)($match[1] ?? 0), $body === false ? '' : $body, $headers];
 };
 
 // The entrypoint initializes a fresh production database before starting Apache.
@@ -41,6 +42,16 @@ for ($attempt = 0; $attempt < 30; $attempt++) {
     usleep(500000);
 }
 $expect($status === 200 && (json_decode($body, true)['status'] ?? '') === 'ok', 'HTTP health check connects to the database');
+if (getenv('LUMS_GATEWAY_ID')) {
+    [$status, $body, $headers] = $request('/?health=1', 'GET', 'https://0tyght.github.io');
+    $expect((json_decode($body, true)['gatewayId'] ?? '') === getenv('LUMS_GATEWAY_ID'), 'Gateway can verify the intended LUMS instance');
+    $expect(in_array('Access-Control-Allow-Origin: https://0tyght.github.io', $headers, true), 'Health CORS permits the exact Pages origin');
+    $expect(!preg_grep('/^Access-Control-Allow-Credentials:/i', $headers), 'Gateway health never grants credentialed CORS');
+    [$status, $body, $headers] = $request('/?health=1', 'GET', 'https://untrusted.example');
+    $expect(!preg_grep('/^Access-Control-Allow-Origin:/i', $headers), 'Health CORS rejects unrelated origins');
+    [$status, $body, $headers] = $request('/', 'GET', 'https://0tyght.github.io');
+    $expect(!preg_grep('/^Access-Control-Allow-Origin:/i', $headers), 'Login and application pages do not enable CORS');
+}
 [$status, $body] = $request('/');
 $expect($status === 200 && str_contains($body, 'name="password"'), 'Public entry point renders the login form');
 $expect(!str_contains($body, 'admin123') && !str_contains($body, 'admin@lums.local'), 'Production login does not expose demo credentials');

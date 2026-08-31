@@ -9,3 +9,4 @@ Dockerfile*
 compose*.yaml
 README.md
 docs
+pages

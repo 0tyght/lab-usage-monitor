@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; connect-src 'self' https://raw.githubusercontent.com https://*.trycloudflare.com; img-src 'self' data:; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <title>LUMS · เชื่อมต่อระบบห้องปฏิบัติการ</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="gateway.css">
+  <script type="module" src="gateway.mjs"></script>
+</head>
+<body>
+  <header><span class="brand">LUMS</span><span>ระบบการใช้ห้องปฏิบัติการ</span></header>
+  <main>
+    <p class="eyebrow" id="context">สำหรับอาจารย์และผู้ดูแลระบบ</p>
+    <section aria-labelledby="status-title" aria-busy="true" id="connection">
+      <div class="status" role="status" aria-live="polite" aria-atomic="true">
+        <span class="status-marker" aria-hidden="true"></span>
+        <div><h1 id="status-title">กำลังตรวจสอบการเชื่อมต่อ</h1><p id="status-detail">กำลังค้นหาเซิร์ฟเวอร์ล่าสุด กรุณารอสักครู่</p></div>
+      </div>
+      <div class="actions"><button id="retry" type="button" disabled>ตรวจสอบอีกครั้ง</button><a id="continue" hidden>เข้าสู่ระบบ</a></div>
+      <p class="checked" id="checked"></p>
+    </section>
+    <aside id="help"><h2>หากยังเชื่อมต่อไม่ได้</h2><p id="help-detail">ติดต่อผู้ดูแลให้เปิดเครื่องและระบบ LUMS แล้วกดตรวจสอบอีกครั้ง</p></aside>
+    <details id="operator-help"><summary>วิธีเปิดระบบสำหรับผู้ดูแล</summary><ol><li>เปิด Docker Desktop และรอให้พร้อม</li><li>เปิด PowerShell ในโฟลเดอร์โปรเจ็กต์ แล้วรัน <code>.\start-online.ps1</code></li><li>รอข้อความว่าพร้อมใช้งาน แล้วกลับมากดตรวจสอบอีกครั้ง</li></ol><p>เครื่องเซิร์ฟเวอร์ต้องเปิดและเชื่อมต่ออินเทอร์เน็ตระหว่างใช้งาน</p></details>
+    <noscript><p class="noscript">หน้านี้ต้องใช้ JavaScript เพื่อค้นหาเซิร์ฟเวอร์ กรุณาเปิด JavaScript ในเบราว์เซอร์แล้วโหลดใหม่</p></noscript>
+  </main>
+  <footer>ลิงก์เข้าระบบถาวร · ข้อมูลเก็บบนเครื่องเซิร์ฟเวอร์ของผู้ดูแล</footer>
+</body>
+</html>

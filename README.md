@@ -10,6 +10,8 @@ Laboratory Usage Monitoring System — ระบบตรวจสอบแล�
 
 ## Run locally
 
+ต้องการเปิดฟรีผ่านลิงก์ GitHub เหมือน Smart Tha Pho ให้ใช้ [คู่มือเปิดออนไลน์ฟรี](docs/free-online.md) และ `start-online.ps1` ไม่ใช่ Render แบบเสียเงิน วิธีนี้ยังต้องเปิดเครื่องและ Docker ระหว่างใช้งาน
+
 Requirements: XAMPP with PHP 8.2 or newer.
 
 ```powershell
