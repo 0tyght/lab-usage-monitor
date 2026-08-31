@@ -67,7 +67,7 @@ function status_label(string $status): string
         'closed' => 'ปิดรับแล้ว',
         'draft' => 'แบบร่าง',
         'scheduled' => 'รอเวลาเริ่ม',
-        'overdue' => 'หมดเวลาลงชื่อ',
+        'overdue' => 'สิ้นสุดเวลารับอัตโนมัติ',
         'cancelled' => 'ยกเลิก',
         default => $status,
     };
@@ -75,11 +75,7 @@ function status_label(string $status): string
 
 function class_display_status(array $classSession): string
 {
-    if (isset($classSession['display_status'])) return (string)$classSession['display_status'];
-    if (($classSession['status'] ?? '') !== 'open') return (string)($classSession['status'] ?? '');
-    if (time() > strtotime((string)($classSession['ends_at'] ?? ''))) return 'overdue';
-    if (time() < strtotime((string)($classSession['starts_at'] ?? ''))) return 'scheduled';
-    return 'open';
+    return class_checkin_status($classSession);
 }
 
 function csv_safe_value(mixed $value): string
@@ -265,8 +261,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_class_panel((int)$result['id']);
         }
         $_SESSION['one_off_errors'] = $result['errors'] ?? ['form'=>'บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง'];
-        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','class_date','starts_time','ends_time','course_code','course_name','section','notes','one_off_request']));
-        $returnPage = ($_GET['page'] ?? '') === 'schedule' ? 'schedule' : 'calendar';
+        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','class_date','starts_time','ends_time','course_code','course_name','section','notes','checkin_mode','one_off_request']));
+        $returnPage = in_array($_GET['page'] ?? '', ['schedule','classes'],true) ? $_GET['page'] : 'calendar';
         $context = array_intersect_key($_GET,array_flip(['month','term_id','room_id','week','weekend','q','source']));
         redirect_to($returnPage,$context+['new_once'=>1]);
     }
@@ -277,9 +273,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_flash('success', 'สร้างคลาสเรียบร้อย', $result['message'] ?? 'เตรียม QR Code เรียบร้อย');
             redirect_class_panel((int)$result['id']);
         }
-        $_SESSION['form_errors'] = $result['errors'] ?? ['form' => $result['message'] ?? 'ไม่สามารถบันทึกข้อมูลได้'];
-        $_SESSION['old_input'] = $_POST;
-        redirect_to('classes');
+        $_SESSION['one_off_errors'] = $result['errors'] ?? ['form' => $result['message'] ?? 'ไม่สามารถบันทึกข้อมูลได้'];
+        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','course_code','course_name','section','notes','checkin_mode']));
+        $_SESSION['one_off_input'] += ['class_date'=>substr((string)($_POST['starts_at'] ?? ''),0,10),'starts_time'=>substr((string)($_POST['starts_at'] ?? ''),11,5),'ends_time'=>substr((string)($_POST['ends_at'] ?? ''),11,5)];
+        redirect_to('classes',['new_once'=>1]);
     }
 
     if ($action === 'close_class') {
@@ -291,7 +288,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'open_class') {
         $classId = (int) ($_POST['class_id'] ?? 0);
-        $result = open_class_session($classId);
+        $result = open_class_session($classId, (string)($_POST['checkin_mode'] ?? 'scheduled'));
         set_flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'เปิดรับลงชื่อแล้ว' : 'ดำเนินการไม่สำเร็จ', $result['message'] ?? '');
         redirect_class_panel($classId);
     }
@@ -379,10 +376,7 @@ if ($page === 'student-checkin'):
     $nowUtc = time();
     $attendanceReceipt = $_SESSION['attendance_success'] ?? [];
     $hasSavedAttendance = isset($_GET['success']) && ($attendanceReceipt['token'] ?? null) === $token;
-    $canCheckIn = $classSession
-        && $classSession['status'] === 'open'
-        && $nowUtc >= strtotime($classSession['starts_at'])
-        && $nowUtc <= strtotime($classSession['ends_at']);
+    $canCheckIn = $classSession && class_checkin_status($classSession, $nowUtc)==='open';
 ?>
 <!doctype html>
 <html lang="th">
@@ -431,8 +425,8 @@ if ($page === 'student-checkin'):
                 <?php elseif ($hasSavedAttendance): ?>
                     <div class="student-success"><span data-icon="circle-check-big"></span><h2 id="attendance-title"><?= !empty($attendanceReceipt['duplicate']) ? 'ลงชื่อในคลาสนี้ไว้แล้ว' : 'บันทึกเรียบร้อยแล้ว' ?></h2><p>รหัสนักศึกษา <?= e($attendanceReceipt['student_code']) ?><br>คุณสามารถปิดหน้านี้ได้ ไม่ต้องลงชื่อซ้ำ</p></div>
                 <?php else: ?>
-                    <?php $waitingToOpen = $classSession['status'] === 'draft' || ($classSession['status'] === 'open' && strtotime($classSession['starts_at']) > $nowUtc); ?>
-                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : 'ปิดรับการลงชื่อแล้ว' ?></h2><p><?= $waitingToOpen ? 'เมื่อถึงเวลาเรียนหรืออาจารย์แจ้งให้ลงชื่อ กดตรวจสอบอีกครั้ง' : 'หากต้องการแก้ไขข้อมูล กรุณาติดต่ออาจารย์ผู้สอน' ?></p><?php if ($waitingToOpen): ?><a class="button button--secondary" href="?page=student-checkin&amp;token=<?= e($token) ?>">ตรวจสอบอีกครั้ง</a><?php endif; ?></div>
+                    <?php $waitingToOpen = in_array(class_checkin_status($classSession),['draft','scheduled'],true); $autoEnded=class_checkin_status($classSession)==='overdue'; ?>
+                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : ($autoEnded?'สิ้นสุดเวลารับอัตโนมัติ':'ปิดรับการลงชื่อแล้ว') ?></h2><p><?= $waitingToOpen ? 'เมื่อถึงเวลาเรียนหรืออาจารย์แจ้งให้ลงชื่อ กดตรวจสอบอีกครั้ง' : 'หากผู้สอนเปิดรับเพิ่มเติม ให้กดตรวจสอบอีกครั้ง เวลาที่ลงชื่อจะบันทึกตามจริง' ?></p><a class="button button--secondary" href="?page=student-checkin&amp;token=<?= e($token) ?>">ตรวจสอบอีกครั้ง</a></div>
                 <?php endif; ?>
             </section>
         <?php endif; ?>
@@ -524,7 +518,7 @@ $nav = [
 ];
 $navPage = $page;
 $oneOffContext = array_intersect_key($_GET,array_flip(['month','term_id','room_id','week','weekend','q','source']));
-$oneOffReturnUrl = '?' . http_build_query(['page'=>$page === 'schedule' ? 'schedule' : 'calendar']+$oneOffContext);
+$oneOffReturnUrl = '?' . http_build_query(['page'=>in_array($page,['schedule','classes'],true) ? $page : 'calendar']+$oneOffContext);
 $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 ?>
 <!doctype html>
@@ -564,7 +558,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <?php if ($page !== 'schedule' || current_academic_term()): ?><a class="button button--primary button--compact" href="<?= $page === 'schedule' ? '#schedule-form' : '?page=classes#new-class' ?>"><span data-icon="plus" aria-hidden="true"></span><?= $page === 'schedule' ? 'เพิ่มตาราง' : 'สร้างคลาส' ?></a><?php endif; ?>
+                <?php if ($page !== 'schedule' || current_academic_term()): ?><a class="button button--primary button--compact" href="<?= $page === 'schedule' ? '#schedule-form' : '?page=classes&amp;new_once=1' ?>"><span data-icon="plus" aria-hidden="true"></span><?= $page === 'schedule' ? 'เพิ่มตาราง' : 'สร้างคลาส' ?></a><?php endif; ?>
             </header>
             <main id="main-content" class="content">
                 <?php if ($flash): ?>
@@ -585,14 +579,14 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                         <article class="metric metric--active"><span>เปิดรับลงชื่อ</span><strong><?= e($data['active_total']) ?></strong><small>คลาส</small></article>
                         <article class="metric"><span>ห้องที่กำลังใช้</span><strong><?= e($data['rooms_in_use']) ?></strong><small>จาก <?= e($data['room_total']) ?> ห้อง</small></article>
                         <?php if ($data['issues_total']): ?>
-                            <a class="metric metric--warning metric--link" href="?page=classes&amp;status=overdue" aria-label="ตรวจสอบคลาสเกินเวลา <?= e($data['issues_total']) ?> คลาส"><span>คลาสเกินเวลา</span><strong><?= e($data['issues_total']) ?></strong><small>ตรวจสอบและปิดรับลงชื่อ <span aria-hidden="true">→</span></small></a>
+                            <a class="metric metric--warning metric--link" href="?page=classes&amp;status=overdue" aria-label="สิ้นสุดเวลารับอัตโนมัติ <?= e($data['issues_total']) ?> คลาส"><span>สิ้นสุดเวลารับอัตโนมัติ</span><strong><?= e($data['issues_total']) ?></strong><small>ดูรายชื่อ หรือเปิดรับเพิ่มเติม <span aria-hidden="true">→</span></small></a>
                         <?php else: ?>
-                            <article class="metric"><span>คลาสเกินเวลา</span><strong>0</strong><small>ไม่มีรายการ</small></article>
+                            <article class="metric"><span>สิ้นสุดเวลารับอัตโนมัติ</span><strong>0</strong><small>ไม่มีรายการ</small></article>
                         <?php endif; ?>
                     </section>
                     <div class="dashboard-grid">
                         <section class="section-block">
-                            <div class="section-heading"><div><h2>สถานะห้องปฏิบัติการ</h2><p>อัปเดตจากคลาสที่กำลังเปิดรับลงชื่อ</p></div><a href="?page=rooms" class="text-link">ดูทุกห้อง</a></div>
+                            <div class="section-heading"><div><h2>สถานะห้องปฏิบัติการ</h2><p>อิงช่วงเวลาเรียนของคลาส การปิดรับลงชื่อไม่ทำให้การจองห้องสิ้นสุดก่อนเวลา</p></div><a href="?page=rooms" class="text-link">ดูทุกห้อง</a></div>
                             <div class="room-list">
                                 <?php foreach ($data['rooms'] as $room): ?>
                                     <article class="room-row">
@@ -606,7 +600,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                         <section class="section-block quick-panel">
                             <div class="section-heading"><div><h2>ทางลัด</h2><p>งานที่ใช้เป็นประจำ</p></div></div>
                             <a class="quick-action" href="?page=schedule"><span class="quick-icon" data-icon="calendar-days"></span><span><strong>เปิดตารางเรียน</strong><small>เลือกเวลาและตรวจห้องว่าง</small></span><span data-icon="chevron-right"></span></a>
-                            <a class="quick-action" href="?page=classes#new-class"><span class="quick-icon" data-icon="plus"></span><span><strong>สร้างคลาสและ QR</strong><small>เปิดรับให้นักศึกษาลงชื่อ</small></span><span data-icon="chevron-right"></span></a>
+                            <a class="quick-action" href="?page=classes&amp;new_once=1"><span class="quick-icon" data-icon="plus"></span><span><strong>สร้างคลาสและ QR</strong><small>เปิดรับให้นักศึกษาลงชื่อ</small></span><span data-icon="chevron-right"></span></a>
                             <a class="quick-action" href="?page=records"><span class="quick-icon" data-icon="search"></span><span><strong>ค้นหาการเข้าเรียน</strong><small>กรองตามนักศึกษา ห้อง และช่วงเวลา</small></span><span data-icon="chevron-right"></span></a>
                             <a class="quick-action" href="?page=reports"><span class="quick-icon" data-icon="download"></span><span><strong>ออกรายงาน</strong><small>สรุปข้อมูลการใช้งาน</small></span><span data-icon="chevron-right"></span></a>
                         </section>
@@ -676,7 +670,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                         </div>
                         <div class="schedule-layout">
                             <section class="schedule-calendar-panel" aria-labelledby="weekly-calendar-title">
-                                <div class="section-heading"><div><h2 id="weekly-calendar-title">ตารางประจำสัปดาห์</h2><p>คลิกช่องเวลาเพื่อกรอกวันและเวลาในแบบฟอร์มอัตโนมัติ</p></div><span class="result-count"><?= count($weekSchedules) ?> รายการในสัปดาห์นี้</span></div>
+                                <div class="section-heading"><div><h2 id="weekly-calendar-title">ตารางประจำสัปดาห์</h2><p>คลิกช่องแรก แล้วคลิกช่องสุดท้ายในวันเดียวกัน เพื่อเลือกหลายชั่วโมงต่อเนื่อง</p></div><span class="result-count"><?= count($weekSchedules) ?> รายการในสัปดาห์นี้</span></div>
                                 <?php if (!$weekSchedules): ?><p class="inline-note">ไม่พบตารางในสัปดาห์และตัวกรองที่เลือก ลองเปลี่ยนสัปดาห์หรือปรับตัวกรอง</p><?php endif; ?>
                                 <div class="schedule-legend"><span><i class="legend-swatch legend-swatch--class"></i>มีตารางเรียน</span><span><i class="legend-swatch legend-swatch--selected"></i>รายการที่เลือก</span><span><i class="legend-swatch legend-swatch--today"></i>วันนี้</span></div>
                                 <div class="schedule-scroll" role="region" aria-label="ตารางเรียนรายสัปดาห์" tabindex="0">
@@ -753,44 +747,27 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                     $rooms = array_values(array_filter(list_rooms(), fn(array $room): bool => $room['status'] === 'available'));
                     $classFilters = ['q' => (string) ($_GET['q'] ?? ''), 'status' => (string) ($_GET['status'] ?? '')];
                     $classes = list_class_sessions($classFilters);
-                    $defaultStart = date('Y-m-d\TH:i');
-                    $defaultEnd = date('Y-m-d\TH:i', time() + 7200);
                     ?>
-                    <header class="page-header"><div><p class="eyebrow">สำหรับอาจารย์และผู้ดูแล</p><h1>คลาสเรียน</h1><p>กด “QR / รายชื่อ” ที่คลาสเพื่อเปิด QR ดาวน์โหลด พิมพ์ และดูผู้ลงชื่อ</p></div></header>
-                    <div class="class-management-layout">
+                    <header class="page-header"><div><p class="eyebrow">สำหรับอาจารย์และผู้ดูแล</p><h1>คลาสเรียน</h1><p>กด “QR / รายชื่อ” ที่คลาสเพื่อเปิด QR ดาวน์โหลด พิมพ์ และดูผู้ลงชื่อ</p></div><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once>สร้างคลาสเรียน</a></header>
+                    <div class="class-hub-layout">
                         <section class="section-block" aria-labelledby="class-list-title">
                             <div class="section-heading"><div><h2 id="class-list-title"><?= $user['role'] === 'admin' ? 'คลาสทั้งหมด' : 'คลาสของฉัน' ?></h2><p>คลาสที่เปิดรับและแบบร่างอยู่ด้านบน</p></div><span class="result-count">แสดง <?= count($classes) ?> คลาส<?= count($classes) === 100 ? ' (สูงสุด 100)' : '' ?></span></div>
                             <form method="get" class="filter-bar filter-bar--compact">
                                 <input type="hidden" name="page" value="classes">
                                 <label class="search-field"><span data-icon="search"></span><span class="sr-only">ค้นหา</span><input name="q" value="<?= e($classFilters['q']) ?>" placeholder="ค้นหารหัสวิชา ชื่อวิชา หรือห้อง"></label>
-                                <label><span class="sr-only">สถานะ</span><select name="status"><option value="">ทุกสถานะ</option><?php foreach (['draft'=>'แบบร่าง','scheduled'=>'รอเวลาเริ่ม','open'=>'เปิดรับลงชื่อ','overdue'=>'หมดเวลาลงชื่อ','closed'=>'ปิดรับแล้ว','cancelled'=>'ยกเลิก'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= $classFilters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                                <label><span class="sr-only">สถานะ</span><select name="status"><option value="">ทุกสถานะ</option><?php foreach (['draft'=>'แบบร่าง','scheduled'=>'รอเวลาเริ่ม','open'=>'เปิดรับลงชื่อ','overdue'=>'สิ้นสุดเวลารับอัตโนมัติ','closed'=>'ปิดรับแล้ว','cancelled'=>'ยกเลิก'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= $classFilters['status'] === $value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
                                 <button class="button button--secondary" type="submit">ค้นหา</button>
                                 <?php if (trim($classFilters['q']) !== '' || $classFilters['status'] !== ''): ?><a class="button button--ghost" href="?page=classes">ล้างตัวกรอง</a><?php endif; ?>
                             </form>
                             <?php render_class_table($classes, trim($classFilters['q']) !== '' || $classFilters['status'] !== ''); ?>
                         </section>
-                        <section id="new-class" class="form-panel form-panel--sticky" aria-labelledby="new-class-title">
-                            <div class="section-heading"><div><p class="eyebrow">สร้าง QR ใหม่</p><h2 id="new-class-title">สร้างคลาสเรียน</h2><p>QR หนึ่งรหัสใช้กับคลาสนี้เท่านั้น</p></div></div>
-                            <?php if ($formErrors): ?><div class="alert alert--error" role="alert"><strong>กรุณาตรวจสอบข้อมูล</strong><span><?= e(implode(' ', array_values($formErrors))) ?></span></div><?php endif; ?>
-                            <form method="post" class="form-grid" novalidate>
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-                                <input type="hidden" name="action" value="create_class">
-                                <label class="field field--full"><span>ห้องปฏิบัติการ <b aria-hidden="true">*</b></span><select name="room_id" required><option value="">เลือกห้องปฏิบัติการ</option><?php foreach ($rooms as $room): ?><option value="<?= e($room['id']) ?>" <?= (string)($oldInput['room_id'] ?? $_GET['room_id'] ?? '') === (string)$room['id'] ? 'selected' : '' ?>><?= e($room['code'] . ' — ' . $room['name']) ?></option><?php endforeach; ?></select></label>
-                                <label class="field"><span>รหัสรายวิชา <b aria-hidden="true">*</b></span><input name="course_code" value="<?= e($oldInput['course_code'] ?? '') ?>" placeholder="เช่น CPE221" maxlength="30" required></label>
-                                <label class="field"><span>กลุ่มเรียน <small>(ไม่บังคับ)</small></span><input name="section" value="<?= e($oldInput['section'] ?? '') ?>" placeholder="เช่น 1" maxlength="30"></label>
-                                <label class="field field--full"><span>ชื่อรายวิชา <b aria-hidden="true">*</b></span><input name="course_name" value="<?= e($oldInput['course_name'] ?? '') ?>" placeholder="เช่น ปฏิบัติการฐานข้อมูล" maxlength="150" required></label>
-                                <label class="field"><span>เริ่มคลาส <b aria-hidden="true">*</b></span><input type="datetime-local" name="starts_at" value="<?= e($oldInput['starts_at'] ?? $defaultStart) ?>" required></label>
-                                <label class="field"><span>สิ้นสุดคลาส <b aria-hidden="true">*</b></span><input type="datetime-local" name="ends_at" value="<?= e($oldInput['ends_at'] ?? $defaultEnd) ?>" required></label>
-                                <label class="field field--full"><span>หมายเหตุ <small>(ไม่บังคับ)</small></span><textarea name="notes" rows="3" maxlength="500" placeholder="รายละเอียดสำหรับอาจารย์"><?= e($oldInput['notes'] ?? '') ?></textarea></label>
-                                <div class="form-actions field--full"><button class="button button--primary" type="submit"><span data-icon="qr-code"></span>สร้างคลาสและ QR Code</button></div>
-                            </form>
-                        </section>
+
                     </div>
 
 
                 <?php elseif ($page === 'records'): ?>
                     <?php $filters = ['q'=>(string)($_GET['q']??''),'room_id'=>(string)($_GET['room_id']??''),'date_from'=>(string)($_GET['date_from']??''),'date_to'=>(string)($_GET['date_to']??'')]; $result = list_attendance_records($filters); $rooms = list_rooms(); ?>
-                    <header class="page-header"><div><p class="eyebrow">ข้อมูลการเข้าเรียน</p><h1>ประวัติการเข้าเรียน</h1><p>ค้นหานักศึกษา รายวิชา ห้อง และเวลาที่ลงชื่อผ่าน QR Code</p></div><a class="button button--primary" href="?page=classes#new-class">สร้างคลาสใหม่</a></header>
+                    <header class="page-header"><div><p class="eyebrow">ข้อมูลการเข้าเรียน</p><h1>ประวัติการเข้าเรียน</h1><p>ค้นหานักศึกษา รายวิชา ห้อง และเวลาที่ลงชื่อผ่าน QR Code</p></div><a class="button button--primary" href="?page=classes&amp;new_once=1">สร้างคลาสใหม่</a></header>
                     <form method="get" class="filter-bar">
                         <input type="hidden" name="page" value="records">
                         <label class="search-field"><span data-icon="search"></span><span class="sr-only">ค้นหา</span><input name="q" value="<?= e($filters['q']) ?>" placeholder="ค้นหาชื่อ รหัสนักศึกษา หรือรายวิชา"></label>
@@ -808,7 +785,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                 <?php elseif ($page === 'rooms'): ?>
                     <?php $rooms = list_rooms(); ?>
                     <header class="page-header"><div><p class="eyebrow">ทรัพยากร</p><h1>ห้องปฏิบัติการ</h1><p>ตรวจสอบรหัสห้อง ตำแหน่ง และสถานะการใช้งานปัจจุบัน</p></div></header>
-                    <section class="section-block"><div class="section-heading"><div><h2>รายการห้อง</h2><p>ทั้งหมด <?= count($rooms) ?> ห้อง</p></div></div><div class="rooms-grid"><?php foreach ($rooms as $room): ?><article class="room-card"><div class="room-card-header"><span class="room-code"><?= e($room['code']) ?></span><span class="status status--<?= e($room['live_status']) ?>"><span></span><?= e(status_label($room['live_status'])) ?></span></div><h2><?= e($room['name']) ?></h2><p><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?></p><dl><div><dt>ความจุ</dt><dd><?= e($room['capacity']) ?> คน</dd></div><div><dt>สถานะระบบ</dt><dd><?= e(match($room['live_status']) { 'active'=>'มีคลาสกำลังใช้งาน', 'maintenance'=>'งดจัดคลาสชั่วคราว', default=>'พร้อมจัดคลาส' }) ?></dd></div></dl><?php if($room['status']==='available'): ?><a class="text-link" href="?page=classes&amp;room_id=<?= e($room['id']) ?>#new-class">สร้างคลาสในห้องนี้</a><?php else: ?><span class="muted">ยังไม่สามารถสร้างคลาสในห้องนี้</span><?php endif; ?></article><?php endforeach; ?></div></section>
+                    <section class="section-block"><div class="section-heading"><div><h2>รายการห้อง</h2><p>ทั้งหมด <?= count($rooms) ?> ห้อง</p></div></div><div class="rooms-grid"><?php foreach ($rooms as $room): ?><article class="room-card"><div class="room-card-header"><span class="room-code"><?= e($room['code']) ?></span><span class="status status--<?= e($room['live_status']) ?>"><span></span><?= e(status_label($room['live_status'])) ?></span></div><h2><?= e($room['name']) ?></h2><p><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?></p><dl><div><dt>ความจุ</dt><dd><?= e($room['capacity']) ?> คน</dd></div><div><dt>สถานะระบบ</dt><dd><?= e(match($room['live_status']) { 'active'=>'มีคลาสกำลังใช้งาน', 'maintenance'=>'งดจัดคลาสชั่วคราว', default=>'พร้อมจัดคลาส' }) ?></dd></div></dl><?php if($room['status']==='available'): ?><a class="text-link" href="?page=classes&amp;room_id=<?= e($room['id']) ?>&amp;new_once=1">สร้างคลาสในห้องนี้</a><?php else: ?><span class="muted">ยังไม่สามารถสร้างคลาสในห้องนี้</span><?php endif; ?></article><?php endforeach; ?></div></section>
 
                 <?php elseif ($page === 'reports'): ?>
                     <?php require __DIR__ . '/views/reports.php'; ?>
@@ -819,7 +796,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             </main>
         </div>
     </div>
-    <?php if (in_array($page,['schedule','calendar'],true)): require __DIR__.'/views/one-off-dialog.php'; endif; ?>
+    <?php if (in_array($page,['schedule','calendar','classes'],true)): require __DIR__.'/views/one-off-dialog.php'; endif; ?>
     <?php require __DIR__.'/views/class-dialog.php'; ?>
     <div class="nav-scrim" data-nav-scrim hidden></div>
     <script src="<?= e(asset_url('qrcode.min.js')) ?>" defer></script>
@@ -836,7 +813,7 @@ function render_class_table(array $items, bool $filtered = false): void
     if (!$items) {
         echo $filtered
             ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบคลาสที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้นหรือสถานะ เพื่อดูคลาสที่ต้องการ</span><a class="button button--secondary" href="?page=classes">ล้างตัวกรอง</a></div>'
-            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสแรกเพื่อรับ QR Code สำหรับนักศึกษา</span><a class="button button--secondary" href="?page=classes#new-class">สร้างคลาสแรก</a></div>';
+            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสแรกเพื่อรับ QR Code สำหรับนักศึกษา</span><a class="button button--secondary" href="?page=classes&amp;new_once=1">สร้างคลาสแรก</a></div>';
         return;
     }
 ?>

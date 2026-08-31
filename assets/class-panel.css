@@ -17,6 +17,12 @@
 .class-panel-attendance .data-table { min-width: 0; }
 .class-panel-attendance td, .class-panel-attendance th { padding: 10px 8px; white-space: normal; overflow-wrap: anywhere; }
 .class-panel-feedback:empty { display: none; }
+.class-panel-feedback { margin: 0; }
+.class-admission-controls { margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.class-admission-controls .inline-note { margin: 0 0 12px; }
+.admission-actions { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.class-info-dialog .admission-actions form { display: flex; flex-direction: row; align-items: flex-end; gap: 8px; }
+.admission-actions select { min-width: 280px; }
 .day-event-actions { display: grid; gap: 8px; }
 .print-room-context { display: none; }
 @media print {
@@ -26,6 +32,7 @@
   body.printing-class-qr #class-info-dialog::backdrop { display: none; }
   body.printing-class-qr .class-info-dialog > header, body.printing-class-qr .class-info-dialog > footer,
   body.printing-class-qr .class-panel-meta, body.printing-class-qr .class-panel-attendance,
+  body.printing-class-qr .class-admission-controls,
   body.printing-class-qr .class-info-dialog .alert,
   body.printing-class-qr .class-panel-feedback, body.printing-class-qr .class-qr-section > :not(.class-qr-poster) { display: none !important; }
   body.printing-class-qr .class-panel-columns, body.printing-class-qr .class-qr-section { display: block; }
@@ -54,3 +61,5 @@
   body.printing-day .day-event { break-inside: avoid; }
   body.printing-day .day-time-block { print-color-adjust: exact; }
 }
+.one-off-range-summary { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:16px 0; }
+.one-off-range-summary .inline-note { flex:1; margin:0; min-width:240px; }

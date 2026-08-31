@@ -81,7 +81,7 @@ function room_usage_events(string $from, string $to, array $filters = []): array
             'key'=>'class-' . $row['id'], 'class_id'=>(int)$row['id'], 'schedule_id'=>(int)$row['schedule_id'],
             'term_id'=>(int)$row['term_id'], 'room_id'=>(int)$row['room_id'], 'room_code'=>$row['room_code'], 'room_name'=>$row['room_name'],
             'course_code'=>$row['course_code'], 'course_name'=>$row['course_name'], 'section'=>$row['section'] ?? '', 'lecturer_name'=>$row['lecturer_name'],
-            'starts_at'=>$row['starts_at'], 'ends_at'=>$row['ends_at'], 'status'=>$row['status'], 'source'=>'classes', 'attendance_count'=>(int)$row['attendance_count'],
+            'starts_at'=>$row['starts_at'], 'ends_at'=>$row['ends_at'], 'status'=>$row['status'], 'display_status'=>class_checkin_status($row), 'source'=>'classes', 'attendance_count'=>(int)$row['attendance_count'],
         ];
     }
     $query = db()->prepare(schedule_select_sql() . ' WHERE ' . implode(' AND ', $scheduleWhere));
@@ -154,9 +154,9 @@ function room_usage_slices(array $events, string $from, string $to, string $time
 
 function usage_source_label(array $event): string
 {
-    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) ? 'คาบครั้งเดียว · ' : '') . match ($event['status']) {
+    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) ? 'คาบครั้งเดียว · ' : '') . match ($event['display_status'] ?? class_checkin_status($event)) {
         'draft'=>'คลาสแบบร่าง', 'closed'=>'คลาสปิดรับแล้ว',
-        default=>strtotime($event['ends_at']) < time() ? 'คลาสหมดเวลา' : (strtotime($event['starts_at']) > time() ? 'คลาสรอเวลาเริ่ม' : 'คลาสเปิดลงชื่อ'),
+        'overdue'=>'สิ้นสุดเวลารับอัตโนมัติ', 'scheduled'=>'คลาสรอเวลาเริ่ม', 'cancelled'=>'คลาสยกเลิก', default=>'คลาสเปิดลงชื่อ',
     };
 }
 

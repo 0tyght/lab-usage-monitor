@@ -50,6 +50,12 @@ jobs:
       - name: Test one-off bookings and recurring conflicts
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/one-off-regression.php
 
+      - name: Test admission lifecycle, capacity and multi-hour classes
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/class-lifecycle-regression.php
+
+      - name: Test simultaneous attendance at room capacity
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/attendance-concurrency.php
+
       - name: Verify HTTP serving and private file isolation
         run: |
           docker run --rm --entrypoint apache2ctl lums-ci:${{ github.sha }} -t

@@ -11,7 +11,16 @@
   const start = field('starts_time'), end = field('ends_time');
   const time = (minutes) => `${String(Math.floor(minutes/60)).padStart(2,'0')}:${String(minutes%60).padStart(2,'0')}`;
   const minutes = (value) => { const [h,m] = value.split(':').map(Number); return h*60+m; };
-  let busy = [], ready = false, controller, request = 0, opener;
+  let busy = [], ready = false, controller, request = 0, opener, rangeAnchor = null;
+  const rangeMessage = dialog.querySelector('[data-once-range]');
+  const modeHelp = dialog.querySelector('[data-once-mode-help]');
+  const updatePolicyHint = () => {
+    const past=field('class_date').value && end.value && `${field('class_date').value}T${end.value}`<=modeHelp.dataset.localNow;
+    modeHelp.textContent=field('checkin_mode').value==='manual'
+      ? 'จะเปิดรับลงชื่อทันทีหลังบันทึก แม้เป็นคาบในอดีตหรืออนาคต และรับต่อจนผู้สอนกดปิดเอง เวลาเรียนยังคงเดิม'
+      : past ? 'คาบนี้พ้นเวลาที่เลือกแล้ว จะบันทึกเป็นแบบร่างและยังลงชื่อไม่ได้ หากต้องการรับตอนนี้ ให้เลือกเปิดจนผู้สอนกดปิดเอง'
+      : 'รับเฉพาะเวลาเรียนและหยุดเมื่อถึงเวลาสิ้นสุด หากเป็นแบบร่าง ให้ผู้สอนกดเปิดรับในหน้าคลาสก่อนใช้งาน';
+  };
   const error = (input, text) => {
     input.setCustomValidity(text);
     input.setAttribute('aria-invalid',String(Boolean(text)));
@@ -19,6 +28,7 @@
     if (hint) { hint.textContent=text; hint.hidden=!text; }
   };
   const checkTime = () => {
+    updatePolicyHint();
     const a=minutes(start.value), b=minutes(end.value);
     const conflict = busy.find((item) => a<item.end && b>item.start);
     let text = '';
@@ -27,13 +37,15 @@
     else if (ready && conflict) text=`${conflict.reason} ${time(conflict.start)}–${time(conflict.end)} กรุณาเปลี่ยนช่วงเวลา`;
     error(end,text);
     submit.disabled=!ready || Boolean(text);
-    slots.querySelectorAll('button').forEach((button) => button.setAttribute('aria-pressed',String(!button.disabled && Number(button.dataset.start)===a && b===a+60)));
+    slots.querySelectorAll('button').forEach((button) => button.setAttribute('aria-pressed',String(!button.disabled && Number(button.dataset.start)<b && Number(button.dataset.start)+60>a)));
+    rangeMessage.textContent=Number.isFinite(a) && Number.isFinite(b) && b>a ? `ช่วงที่เลือก ${start.value}–${end.value} · รวม ${Math.floor((b-a)/60)} ชั่วโมง${(b-a)%60?' '+((b-a)%60)+' นาที':''}${rangeAnchor!==null?' · คลิกช่องสุดท้ายเพื่อขยายช่วง':''}` : 'กรุณาเลือกเวลาเริ่มและสิ้นสุด';
     return !text && ready;
   };
   const refresh = async () => {
+    updatePolicyHint();
     controller?.abort();
     const current=++request;
-    ready=false; submit.disabled=true; retry.hidden=true; slots.replaceChildren();
+    ready=false; rangeAnchor=null; submit.disabled=true; retry.hidden=true; slots.replaceChildren();
     message.removeAttribute('aria-busy');
     error(end,'');
     const date=field('class_date').value, room=field('room_id').value, lecturer=field('lecturer_user_id').value;
@@ -41,7 +53,8 @@
     message.textContent='กำลังตรวจตารางทั้งภาคและคาบที่มีอยู่…';
     message.setAttribute('aria-busy','true');
     controller=new AbortController();
-    const timeout=setTimeout(()=>controller.abort(),12000);
+    const currentController=controller;
+    const timeout=setTimeout(()=>currentController.abort(),12000);
     try {
       const response=await fetch(`?${new URLSearchParams({api:'one-off-availability',date,room_id:room,lecturer_user_id:lecturer})}`,{signal:controller.signal,credentials:'same-origin',cache:'no-store'});
       const result=await response.json();
@@ -56,7 +69,11 @@
         button.textContent=`${time(a)}–${time(b)}`;
         const status=document.createElement('small'); status.textContent=conflict?'ไม่ว่าง':'เลือกเวลา'; button.append(status);
         button.setAttribute('aria-label',`${time(a)}–${time(b)} ${conflict?conflict.reason:'เลือกเวลา'}`);
-        button.addEventListener('click',()=>{start.value=time(a);end.value=time(b);checkTime();});
+        button.addEventListener('click',()=>{
+          if(rangeAnchor===null){rangeAnchor=a;start.value=time(a);end.value=time(b);}
+          else {start.value=time(Math.min(rangeAnchor,a));end.value=time(Math.max(rangeAnchor,a)+60);rangeAnchor=null;}
+          checkTime();
+        });
         slots.append(button);
       }
       checkTime();
@@ -89,7 +106,9 @@
     const url=new URL(location.href);url.searchParams.delete('new_once');url.searchParams.delete('once_date');history.replaceState(null,'',url);
   });
   ['class_date','room_id','lecturer_user_id'].forEach((name)=>field(name).addEventListener('change',refresh));
-  [start,end].forEach((input)=>input.addEventListener('input',checkTime));
+  [start,end].forEach((input)=>input.addEventListener('input',()=>{rangeAnchor=null;checkTime();}));
+  field('checkin_mode').addEventListener('change',updatePolicyHint);
+  dialog.querySelector('[data-once-reset-range]').addEventListener('click',()=>{rangeAnchor=null;start.value='';end.value='';checkTime();slots.querySelector('button:not(:disabled)')?.focus();});
   retry.addEventListener('click',refresh);
   form.addEventListener('submit',(event)=>{
     if (!checkTime() || !form.checkValidity()) {
@@ -98,4 +117,5 @@
     }
   });
   if(dialog.open) {dialog.removeAttribute('open');open();}
+  else if(location.hash==='#new-class')open();
 })();

@@ -16,18 +16,18 @@ function room_select_sql(): string
                        WHEN EXISTS (
                            SELECT 1 FROM class_sessions current_session
                            WHERE current_session.room_id = r.id
-                             AND current_session.status = 'open'
+                             AND current_session.status IN ('open','closed')
                              AND current_session.starts_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                             AND current_session.ends_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                             AND current_session.ends_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                        ) THEN 'active'
                        ELSE 'available'
                    END AS live_status,
                    (
                        SELECT current_session.id FROM class_sessions current_session
                        WHERE current_session.room_id = r.id
-                         AND current_session.status = 'open'
+                         AND current_session.status IN ('open','closed')
                          AND current_session.starts_at <= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-                         AND current_session.ends_at >= strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+                         AND current_session.ends_at > strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
                        ORDER BY current_session.starts_at DESC LIMIT 1
                    ) AS active_usage_id
             FROM rooms r";
@@ -268,8 +268,8 @@ function validate_schedule_input(array $input, int $ignoreId = 0): array
     if ($day === false || $day < 1 || $day > 7) $errors['day_of_week'] = 'กรุณาเลือกวันเรียน';
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $startsTime)) $errors['starts_time'] = 'เวลาเริ่มไม่ถูกต้อง';
     if (!preg_match('/^(?:[01]\d|2[0-3]):[0-5]\d$/', $endsTime) || $endsTime <= $startsTime) $errors['ends_time'] = 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $activeFrom)) $errors['active_from'] = 'วันเริ่มใช้ตารางไม่ถูกต้อง';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $activeUntil) || $activeUntil < $activeFrom) $errors['active_until'] = 'วันสิ้นสุดใช้ตารางไม่ถูกต้อง';
+    if (!valid_iso_date($activeFrom)) $errors['active_from'] = 'วันเริ่มใช้ตารางไม่ถูกต้อง';
+    if (!valid_iso_date($activeUntil) || $activeUntil < $activeFrom) $errors['active_until'] = 'วันสิ้นสุดใช้ตารางไม่ถูกต้อง';
     if (isset($term) && ($activeFrom < $term['starts_on'] || $activeUntil > $term['ends_on'])) $errors['active_from'] = 'ช่วงวันที่ต้องอยู่ภายในภาคการศึกษา';
     if (text_length($notes) > 500) $errors['notes'] = 'หมายเหตุต้องไม่เกิน 500 ตัวอักษร';
     if ($errors) return ['ok'=>false, 'message'=>'กรุณาตรวจสอบข้อมูลตารางเรียน', 'errors'=>$errors];
@@ -282,14 +282,17 @@ function validate_schedule_input(array $input, int $ignoreId = 0): array
     $lecturer->execute([':id'=>$lecturerId]);
     if (!$lecturerRow = $lecturer->fetch()) return ['ok'=>false, 'message'=>'ไม่พบอาจารย์ผู้สอน', 'errors'=>['lecturer_user_id'=>'ไม่พบอาจารย์ผู้สอน']];
 
-    $conflict = db()->prepare("SELECT s.id, s.room_id, s.lecturer_user_id, s.course_code, r.code AS room_code, u.full_name AS lecturer_name
+    $conflict = db()->prepare("SELECT s.id, s.room_id, s.lecturer_user_id, s.course_code, s.active_from, s.active_until, r.code AS room_code, u.full_name AS lecturer_name
         FROM course_schedules s JOIN rooms r ON r.id=s.room_id JOIN users u ON u.id=s.lecturer_user_id
-        WHERE s.term_id=:term_id AND s.day_of_week=:day AND s.status='active' AND s.id<>:ignore_id
+        WHERE s.day_of_week=:day AND s.status='active' AND s.id<>:ignore_id
           AND s.active_from<=:active_until AND s.active_until>=:active_from
           AND s.starts_time<:ends_time AND s.ends_time>:starts_time
-          AND (s.room_id=:room_id OR s.lecturer_user_id=:lecturer_id) LIMIT 1");
-    $conflict->execute([':term_id'=>$termId, ':day'=>$day, ':ignore_id'=>$ignoreId, ':active_until'=>$activeUntil, ':active_from'=>$activeFrom, ':ends_time'=>$endsTime, ':starts_time'=>$startsTime, ':room_id'=>$roomId, ':lecturer_id'=>$lecturerId]);
-    if ($row = $conflict->fetch()) {
+          AND (s.room_id=:room_id OR s.lecturer_user_id=:lecturer_id)");
+    $conflict->execute([':day'=>$day, ':ignore_id'=>$ignoreId, ':active_until'=>$activeUntil, ':active_from'=>$activeFrom, ':ends_time'=>$endsTime, ':starts_time'=>$startsTime, ':room_id'=>$roomId, ':lecturer_id'=>$lecturerId]);
+    while ($row = $conflict->fetch()) {
+        $overlapStart = new DateTimeImmutable(max($activeFrom,$row['active_from']));
+        $firstLesson = $overlapStart->modify('+' . (((int)$day-(int)$overlapStart->format('N')+7)%7) . ' days');
+        if ($firstLesson->format('Y-m-d') > min($activeUntil,$row['active_until'])) continue;
         $message = (int) $row['room_id'] === (int) $roomId
             ? 'ห้อง ' . $row['room_code'] . ' มีวิชา ' . $row['course_code'] . ' ในช่วงเวลานี้แล้ว'
             : 'อาจารย์ ' . $row['lecturer_name'] . ' มีตารางสอนในช่วงเวลานี้แล้ว';
@@ -375,6 +378,7 @@ function import_course_schedule_csv(int $termId, array $file): array
     if (!$header) { fclose($handle); return ['ok'=>false, 'message'=>'ไฟล์ไม่มีหัวตาราง', 'errors'=>['schedule_file'=>'ไฟล์ไม่มีหัวตาราง']]; }
     $header[0] = preg_replace('/^\xEF\xBB\xBF/', '', (string)$header[0]);
     $header = array_map(fn($value)=>strtolower(trim((string)$value)), $header);
+    if (count(array_unique($header)) !== count($header)) { fclose($handle); return ['ok'=>false,'errors'=>['schedule_file'=>'หัวตาราง CSV มีชื่อคอลัมน์ซ้ำ กรุณาใช้ไฟล์ตัวอย่าง']]; }
     $required = ['course_code','course_name','section','room_code','lecturer_email','day_of_week','starts_time','ends_time','active_from','active_until','notes'];
     if (array_diff($required, $header)) { fclose($handle); return ['ok'=>false, 'message'=>'หัวตาราง CSV ไม่ครบ กรุณาใช้ไฟล์ตัวอย่าง', 'errors'=>['schedule_file'=>'หัวตาราง CSV ไม่ครบ กรุณาใช้ไฟล์ตัวอย่าง']]; }
 
@@ -386,6 +390,7 @@ function import_course_schedule_csv(int $termId, array $file): array
     while (($values = fgetcsv($handle)) !== false) {
         $line++;
         if (count(array_filter($values, fn($v)=>trim((string)$v) !== '')) === 0) continue;
+        if (count($values) > count($header)) { fclose($handle); return ['ok'=>false,'errors'=>['schedule_file'=>"แถว {$line}: จำนวนคอลัมน์เกินหัวตาราง ยังไม่ได้นำเข้าข้อมูล"]]; }
         $record = array_combine($header, array_pad($values, count($header), ''));
         $roomCode = strtoupper(trim((string)$record['room_code']));
         $email = strtolower(trim((string)$record['lecturer_email']));
@@ -397,7 +402,7 @@ function import_course_schedule_csv(int $termId, array $file): array
             'term_id'=>$termId, 'room_id'=>$rooms[$roomCode], 'lecturer_user_id'=>$lecturers[$email],
             'course_code'=>$record['course_code'], 'course_name'=>$record['course_name'], 'section'=>$record['section'],
             'day_of_week'=>$day, 'starts_time'=>$record['starts_time'], 'ends_time'=>$record['ends_time'],
-            'active_from'=>$record['active_from'] ?: $term['starts_on'], 'active_until'=>$record['active_until'] ?: $term['ends_on'], 'notes'=>$record['notes'],
+            'active_from'=>$record['active_from'] ?: $term['starts_on'], 'active_until'=>$record['active_until'] ?: $term['ends_on'], 'notes'=>$record['notes'], '_csv_line'=>$line,
         ];
     }
     fclose($handle);
@@ -410,8 +415,9 @@ function import_course_schedule_csv(int $termId, array $file): array
             $result = create_course_schedule($record);
             if (!$result['ok']) {
                 $connection->rollBack();
-                $rowNumber = $index + 2;
-                return ['ok'=>false, 'message'=>"แถว {$rowNumber}: " . $result['message'], 'errors'=>['schedule_file'=>"แถว {$rowNumber}: " . $result['message']]];
+                $rowNumber = $record['_csv_line'];
+                $reason = implode(' ',array_values($result['errors'] ?? [])) ?: $result['message'];
+                return ['ok'=>false, 'message'=>"แถว {$rowNumber}: " . $reason, 'errors'=>['schedule_file'=>"แถว {$rowNumber}: " . $reason . ' ยังไม่ได้นำเข้าข้อมูลทั้งไฟล์']];
             }
         }
         $connection->commit();
@@ -427,8 +433,9 @@ function create_session_from_schedule(int $scheduleId, string $date): array
 {
     $schedule = get_course_schedule($scheduleId);
     $user = current_user();
-    if (!$schedule || !$user) return ['ok'=>false, 'message'=>'ไม่พบตารางเรียนหรือไม่มีสิทธิ์'];
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) return ['ok'=>false, 'message'=>'วันที่คาบเรียนไม่ถูกต้อง'];
+    if (!$schedule || !$user || !in_array($user['role'],['admin','lecturer'],true)) return ['ok'=>false, 'message'=>'ไม่พบตารางเรียนหรือไม่มีสิทธิ์'];
+    if ($schedule['status']!=='active') return ['ok'=>false,'message'=>'ตารางนี้ถูกยกเลิกแล้ว ไม่สามารถสร้างคาบใหม่'];
+    if (!valid_iso_date($date)) return ['ok'=>false, 'message'=>'วันที่คาบเรียนไม่ถูกต้อง'];
     $day = (int)(new DateTimeImmutable($date))->format('N');
     if ($day !== $schedule['day_of_week'] || $date < $schedule['active_from'] || $date > $schedule['active_until']) return ['ok'=>false, 'message'=>'วันที่นี้ไม่ตรงกับตารางเรียน'];
     $existing = db()->prepare('SELECT id FROM class_sessions WHERE schedule_id=:schedule_id AND scheduled_date=:date LIMIT 1');
@@ -438,7 +445,7 @@ function create_session_from_schedule(int $scheduleId, string $date): array
     $endsAt = local_datetime_to_utc($date . 'T' . $schedule['ends_time']);
     if (!$startsAt || !$endsAt) return ['ok'=>false, 'message'=>'ไม่สามารถคำนวณเวลาคาบเรียนได้'];
     $nowTs = time();
-    $status = $nowTs >= strtotime($startsAt) - 1800 && $nowTs <= strtotime($endsAt) ? 'open' : 'draft';
+    $status = $nowTs >= strtotime($startsAt) - 1800 && $nowTs < strtotime($endsAt) ? 'open' : 'draft';
     $now = utc_now();
     $insert = db()->prepare("INSERT INTO class_sessions (room_id, lecturer_user_id, course_code, course_name, section, starts_at, ends_at, status, qr_token, notes, schedule_id, scheduled_date, created_at, updated_at) VALUES (:room_id,:lecturer_id,:course_code,:course_name,:section,:starts_at,:ends_at,:status,:qr_token,:notes,:schedule_id,:scheduled_date,:created_at,:updated_at)");
     $insert->execute([
@@ -450,24 +457,36 @@ function create_session_from_schedule(int $scheduleId, string $date): array
     return ['ok'=>true, 'id'=>$id, 'status'=>$status, 'message'=>$status === 'open' ? 'สร้าง QR และเปิดรับลงชื่อแล้ว' : 'เตรียม QR สำหรับคาบนี้แล้ว'];
 }
 
-function open_class_session(int $id): array
+/** Attendance policy is independent of room reservation time. */
+function class_checkin_status(array $session, ?int $now = null): string
+{
+    if (($session['status'] ?? '') !== 'open') return (string)($session['status'] ?? '');
+    if (($session['checkin_mode'] ?? 'scheduled') === 'manual') return 'open';
+    $now ??= time();
+    if ($now >= strtotime($session['ends_at'])) return 'overdue';
+    if ($now < strtotime($session['starts_at'])) return 'scheduled';
+    return 'open';
+}
+
+function open_class_session(int $id, string $mode = 'scheduled'): array
 {
     $session = get_class_session($id);
     $user = current_user();
-    if (!$session || !$user) return ['ok'=>false, 'message'=>'ไม่พบคลาสหรือไม่มีสิทธิ์'];
-    if ($session['status'] === 'open') return ['ok'=>true, 'message'=>'คลาสนี้เปิดรับลงชื่ออยู่แล้ว'];
-    if ($session['status'] !== 'draft') return ['ok'=>false, 'message'=>'คลาสนี้ไม่สามารถเปิดรับลงชื่อได้'];
-    $statement = db()->prepare("UPDATE class_sessions SET status='open', updated_at=:updated_at WHERE id=:id AND status='draft'");
-    $statement->execute([':updated_at'=>utc_now(), ':id'=>$id]);
-    audit_log('class_opened', 'class_session', $id, [], (int)$user['id']);
-    return ['ok'=>true, 'message'=>'เปิดรับการลงชื่อแล้ว'];
+    if (!$session || !$user || !in_array($user['role'],['admin','lecturer'],true)) return ['ok'=>false, 'message'=>'ไม่พบคลาสหรือไม่มีสิทธิ์'];
+    if (!in_array($mode,['scheduled','manual'],true)) return ['ok'=>false,'message'=>'กรุณาเลือกวิธีเปิดรับลงชื่อ'];
+    if ($session['status'] === 'cancelled') return ['ok'=>false, 'message'=>'คลาสถูกยกเลิก ไม่สามารถเปิดรับลงชื่อได้'];
+    if ($mode === 'scheduled' && time() >= strtotime($session['ends_at'])) return ['ok'=>false,'message'=>'เวลาเรียนผ่านไปแล้ว หากต้องการรับเพิ่ม ให้เลือก “เปิดรับตอนนี้จนกดปิดเอง” โดยเวลาเรียนเดิมจะไม่เปลี่ยน'];
+    $statement = db()->prepare("UPDATE class_sessions SET status='open', checkin_mode=:mode, updated_at=:updated_at WHERE id=:id AND status IN ('draft','open','closed')");
+    $statement->execute([':mode'=>$mode, ':updated_at'=>utc_now(), ':id'=>$id]);
+    audit_log('class_opened', 'class_session', $id, ['checkin_mode'=>$mode,'previous_status'=>$session['status']], (int)$user['id']);
+    return ['ok'=>true, 'message'=>$mode==='manual'?'เปิดรับทันทีจนกว่าผู้สอนจะกดปิดเอง เวลาเรียนและการจองห้องเดิมไม่เปลี่ยน':(time()<strtotime($session['starts_at'])?'ตั้งให้รับลงชื่อตามเวลาเรียนแล้ว ขณะนี้ยังรอเวลาเริ่ม':'เปิดรับตามเวลาเรียน และจะหยุดรับอัตโนมัติเมื่อสิ้นสุดคาบ')];
 }
 
 function class_session_select_sql(): string
 {
     return "SELECT cs.id, cs.room_id, cs.lecturer_user_id, cs.course_code, cs.course_name,
                    cs.section, cs.starts_at, cs.ends_at, cs.status, cs.qr_token, cs.notes,
-                   cs.schedule_id, cs.scheduled_date,
+                   cs.schedule_id, cs.scheduled_date, cs.checkin_mode,
                    cs.created_at, cs.updated_at, r.code AS room_code, r.name AS room_name,
                    r.building, r.floor, r.capacity, u.full_name AS lecturer_name,
                    COUNT(ar.id) AS attendance_count
@@ -483,12 +502,7 @@ function normalize_class_session(array $row): array
         $row[$key] = (int) ($row[$key] ?? 0);
     }
     $row['schedule_id'] = isset($row['schedule_id']) && $row['schedule_id'] !== null ? (int) $row['schedule_id'] : null;
-    $row['display_status'] = $row['status'];
-    if ($row['status'] === 'open') {
-        $now = time();
-        if ($now > strtotime((string)$row['ends_at'])) $row['display_status'] = 'overdue';
-        elseif ($now < strtotime((string)$row['starts_at'])) $row['display_status'] = 'scheduled';
-    }
+    $row['display_status'] = class_checkin_status($row);
 
     return $row;
 }
@@ -511,11 +525,11 @@ function list_class_sessions(array $filters = [], int $limit = 100): array
         $where[] = "cs.status = 'open'";
         $params[':status_now'] = utc_now();
         if ($status === 'open') {
-            $where[] = 'cs.starts_at <= :status_now AND cs.ends_at >= :status_now';
+            $where[] = "(cs.checkin_mode='manual' OR (cs.starts_at <= :status_now AND cs.ends_at > :status_now))";
         } elseif ($status === 'scheduled') {
-            $where[] = 'cs.starts_at > :status_now';
+            $where[] = "cs.checkin_mode='scheduled' AND cs.starts_at > :status_now";
         } else {
-            $where[] = 'cs.ends_at < :status_now';
+            $where[] = "cs.checkin_mode='scheduled' AND cs.ends_at <= :status_now";
         }
     }
     $search = trim((string) ($filters['q'] ?? ''));
@@ -572,6 +586,22 @@ function get_public_class_by_token(string $token): ?array
 
 function create_class_session(array $input): array
 {
+    $connection=db();
+    $ownsTransaction=!$connection->inTransaction();
+    if ($ownsTransaction) $connection->beginTransaction();
+    try {
+        $result=create_validated_class_session($input);
+        if ($ownsTransaction && $result['ok']) $connection->commit();
+        return $result;
+    } catch (Throwable) {
+        return ['ok'=>false,'errors'=>['form'=>'บันทึกไม่สำเร็จ กรุณาตรวจเวลาแล้วลองอีกครั้ง']];
+    } finally {
+        if ($ownsTransaction && $connection->inTransaction()) $connection->rollBack();
+    }
+}
+
+function create_validated_class_session(array $input): array
+{
     $operator = current_user();
     if (!$operator || !in_array($operator['role'], ['admin', 'lecturer'], true)) {
         return ['ok' => false, 'message' => 'ไม่มีสิทธิ์สร้างคลาสเรียน', 'errors' => ['form' => 'ไม่มีสิทธิ์สร้างคลาสเรียน']];
@@ -585,6 +615,7 @@ function create_class_session(array $input): array
     $startsAt = local_datetime_to_utc((string) ($input['starts_at'] ?? ''));
     $endsAt = local_datetime_to_utc((string) ($input['ends_at'] ?? ''));
     $notes = trim((string) ($input['notes'] ?? ''));
+    $checkinMode=(string)($input['checkin_mode'] ?? 'scheduled');
     $errors = [];
 
     if ($roomId === false || $roomId === null || $roomId < 1) $errors['room_id'] = 'กรุณาเลือกห้องปฏิบัติการ';
@@ -596,6 +627,7 @@ function create_class_session(array $input): array
     if ($startsAt && $endsAt && strtotime($endsAt) <= strtotime($startsAt)) $errors['ends_at'] = 'เวลาสิ้นสุดต้องอยู่หลังเวลาเริ่ม';
     if ($startsAt && $endsAt && strtotime($endsAt) - strtotime($startsAt) > 12 * 3600) $errors['ends_at'] = 'ระยะเวลาคลาสต้องไม่เกิน 12 ชั่วโมง';
     if (text_length($notes) > 500) $errors['notes'] = 'หมายเหตุต้องไม่เกิน 500 ตัวอักษร';
+    if (!in_array($checkinMode,['scheduled','manual'],true)) $errors['checkin_mode']='กรุณาเลือกวิธีรับลงชื่อ';
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูลคลาส', 'errors' => $errors];
 
     $connection = db();
@@ -609,17 +641,23 @@ function create_class_session(array $input): array
         return ['ok' => false, 'message' => 'ห้องนี้ยังไม่พร้อมเปิดคลาส', 'errors' => ['room_id' => 'ห้องนี้ยังไม่พร้อมเปิดคลาส']];
     }
 
-    $conflict = $connection->prepare("SELECT id FROM class_sessions WHERE room_id = :room_id AND status IN ('draft','open') AND starts_at < :ends_at AND ends_at > :starts_at LIMIT 1");
-    $conflict->execute([':room_id' => $roomId, ':starts_at' => $startsAt, ':ends_at' => $endsAt]);
-    if ($conflict->fetchColumn() !== false) {
-        return ['ok' => false, 'message' => 'ห้องนี้มีคลาสในช่วงเวลาที่เลือกแล้ว', 'errors' => ['room_id' => 'ห้องนี้มีคลาสในช่วงเวลาที่เลือกแล้ว']];
+    // Every creation entry point checks room + lecturer + recurring plans.
+    $tz=new DateTimeZone((string)app_config('app.timezone','Asia/Bangkok'));
+    $begin=(new DateTimeImmutable($startsAt))->setTimezone($tz);
+    $finish=(new DateTimeImmutable($endsAt))->setTimezone($tz);
+    for ($day=$begin->setTime(0,0); $day<$finish; $day=$day->modify('+1 day')) {
+        $a=max(0,($begin->getTimestamp()-$day->getTimestamp())/60);
+        $b=min(1440,($finish->getTimestamp()-$day->getTimestamp())/60);
+        foreach (one_off_busy_times((int)$roomId,$lecturerId,$day->format('Y-m-d')) as $busy) {
+            if ($a<$busy['end'] && $b>$busy['start']) return ['ok'=>false,'message'=>$busy['reason'].'ในช่วงที่เลือก','errors'=>['ends_at'=>$busy['reason'].'ในช่วงที่เลือก กรุณาเปลี่ยนเวลา ห้อง หรือผู้สอน']];
+        }
     }
 
     $now = utc_now();
-    $status = time() >= strtotime((string)$startsAt) - 1800 && time() <= strtotime((string)$endsAt) ? 'open' : 'draft';
+    $status = $checkinMode==='manual' || (time() >= strtotime((string)$startsAt) - 1800 && time() < strtotime((string)$endsAt)) ? 'open' : 'draft';
     $insert = $connection->prepare(
-        "INSERT INTO class_sessions (room_id, lecturer_user_id, course_code, course_name, section, starts_at, ends_at, status, qr_token, notes, created_at, updated_at)
-         VALUES (:room_id, :lecturer_id, :course_code, :course_name, :section, :starts_at, :ends_at, :status, :qr_token, :notes, :created_at, :updated_at)"
+        "INSERT INTO class_sessions (room_id, lecturer_user_id, course_code, course_name, section, starts_at, ends_at, status, checkin_mode, qr_token, notes, created_at, updated_at)
+         VALUES (:room_id, :lecturer_id, :course_code, :course_name, :section, :starts_at, :ends_at, :status, :checkin_mode, :qr_token, :notes, :created_at, :updated_at)"
     );
     $insert->execute([
         ':room_id' => $roomId,
@@ -630,6 +668,7 @@ function create_class_session(array $input): array
         ':starts_at' => $startsAt,
         ':ends_at' => $endsAt,
         ':status' => $status,
+        ':checkin_mode' => $checkinMode,
         ':qr_token' => bin2hex(random_bytes(16)),
         ':notes' => $notes === '' ? null : $notes,
         ':created_at' => $now,
@@ -645,8 +684,9 @@ function close_class_session(int $id): array
 {
     $session = get_class_session($id);
     $user = current_user();
-    if (!$session || !$user) return ['ok' => false, 'message' => 'ไม่พบคลาสหรือไม่มีสิทธิ์จัดการ'];
+    if (!$session || !$user || !in_array($user['role'],['admin','lecturer'],true)) return ['ok' => false, 'message' => 'ไม่พบคลาสหรือไม่มีสิทธิ์จัดการ'];
     if ($session['status'] === 'closed') return ['ok' => true, 'message' => 'คลาสนี้ปิดรับแล้ว'];
+    if ($session['status'] === 'cancelled') return ['ok'=>false,'message'=>'คลาสนี้ถูกยกเลิกแล้ว'];
 
     $statement = db()->prepare("UPDATE class_sessions SET status = 'closed', updated_at = :updated_at WHERE id = :id AND status IN ('draft','open')");
     $statement->execute([':updated_at' => utc_now(), ':id' => $id]);
@@ -726,15 +766,27 @@ function register_student_attendance(string $token, array $input): array
     if (text_length($studentName) < 2 || text_length($studentName) > 100) $errors['student_name'] = 'ชื่อ–นามสกุลต้องมีความยาว 2–100 ตัวอักษร';
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูล', 'errors' => $errors];
 
-    $now = utc_now();
-    if ($session['status'] !== 'open') return ['ok' => false, 'message' => 'คลาสนี้ปิดรับการลงชื่อแล้ว', 'errors' => ['form' => 'คลาสนี้ปิดรับการลงชื่อแล้ว']];
-    if (strtotime($now) < strtotime($session['starts_at'])) return ['ok' => false, 'message' => 'คลาสนี้ยังไม่เปิดให้ลงชื่อ', 'errors' => ['form' => 'คลาสนี้ยังไม่เปิดให้ลงชื่อ']];
-    if (strtotime($now) > strtotime($session['ends_at'])) return ['ok' => false, 'message' => 'หมดเวลาลงชื่อสำหรับคลาสนี้แล้ว', 'errors' => ['form' => 'หมดเวลาลงชื่อสำหรับคลาสนี้แล้ว']];
-    if ($session['attendance_count'] >= $session['capacity']) return ['ok' => false, 'message' => 'จำนวนผู้ลงชื่อครบความจุห้องแล้ว', 'errors' => ['form' => 'จำนวนผู้ลงชื่อครบความจุห้องแล้ว']];
-
     $requestId = preg_match('/^[A-Za-z0-9._:-]{8,100}$/', $requestId) ? $requestId : 'student-' . bin2hex(random_bytes(12));
+    $connection = db();
+    $ownsTransaction = !$connection->inTransaction();
+    if ($ownsTransaction) $connection->beginTransaction();
     try {
-        $insert = db()->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :request_id, :created_at)');
+        // Serialize capacity/status checks with insert and concurrent close actions.
+        $lock=$connection->prepare('UPDATE class_sessions SET id=id WHERE id=?');
+        $lock->execute([$session['id']]);
+        $session=get_public_class_by_token($token);
+        if (!$session) return ['ok'=>false,'message'=>'ไม่พบคลาสเรียน','errors'=>['form'=>'ไม่พบคลาสเรียน']];
+        $existing=$connection->prepare('SELECT id FROM attendance_records WHERE class_session_id=? AND student_code=?');
+        $existing->execute([$session['id'],$studentCode]);
+        if (($existingId=$existing->fetchColumn())!==false) return ['ok'=>true,'id'=>(int)$existingId,'duplicate'=>true,'message'=>'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
+        $state=class_checkin_status($session);
+        if ($state!=='open') {
+            $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'สิ้นสุดเวลารับอัตโนมัติแล้ว กรุณาติดต่อผู้สอนเพื่อเปิดรับเพิ่ม',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
+            return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
+        }
+        if ($session['attendance_count'] >= $session['capacity']) return ['ok'=>false,'message'=>'จำนวนผู้ลงชื่อครบความจุห้องแล้ว','errors'=>['form'=>'จำนวนผู้ลงชื่อครบความจุห้องแล้ว']];
+        $now=utc_now();
+        $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :request_id, :created_at)');
         $insert->execute([
             ':class_id' => $session['id'],
             ':student_code' => $studentCode,
@@ -743,13 +795,17 @@ function register_student_attendance(string $token, array $input): array
             ':request_id' => $requestId,
             ':created_at' => $now,
         ]);
-        audit_log('student_attendance_created', 'class_session', $session['id'], ['student_code' => $studentCode], null);
-        return ['ok' => true, 'id' => (int) db()->lastInsertId(), 'message' => 'ลงชื่อเข้าเรียนเรียบร้อย'];
+        $id=(int)$connection->lastInsertId();
+        audit_log('student_attendance_created', 'class_session', $session['id'], ['student_code' => $studentCode,'checkin_mode'=>$session['checkin_mode']], null);
+        if ($ownsTransaction) $connection->commit();
+        return ['ok' => true, 'id' => $id, 'message' => 'ลงชื่อเข้าเรียนเรียบร้อย'];
     } catch (PDOException $exception) {
         if ((string) $exception->getCode() === '23000' || str_contains(strtolower($exception->getMessage()), 'unique')) {
-            return ['ok' => true, 'duplicate' => true, 'message' => 'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
+            return ['ok'=>false,'message'=>'รหัสการส่งแบบฟอร์มถูกใช้แล้ว กรุณารีเฟรชหน้าแล้วลองอีกครั้ง','errors'=>['form'=>'รหัสการส่งแบบฟอร์มถูกใช้แล้ว กรุณารีเฟรชหน้าแล้วลองอีกครั้ง']];
         }
         throw $exception;
+    } finally {
+        if ($ownsTransaction && $connection->inTransaction()) $connection->rollBack();
     }
 }
 
@@ -797,17 +853,17 @@ function dashboard_data(): array
     $today = $connection->prepare('SELECT COUNT(*) FROM class_sessions WHERE starts_at >= :start AND starts_at < :end' . $scopeSql);
     $today->execute($params);
     $now = utc_now();
-    $active = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND starts_at <= :now AND ends_at >= :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
+    $active = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND (checkin_mode='manual' OR (starts_at <= :now AND ends_at > :now))" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
     $activeParams = [':now'=>$now];
     if ($scopeSql) $activeParams[':viewer_id'] = $viewer['id'];
     $active->execute($activeParams);
     $activeTotal = (int) $active->fetchColumn();
-    $roomsSql = "SELECT COUNT(DISTINCT room_id) FROM class_sessions WHERE status = 'open' AND starts_at <= :now AND ends_at >= :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : '');
+    $roomsSql = "SELECT COUNT(DISTINCT room_id) FROM class_sessions WHERE status IN ('open','closed') AND starts_at <= :now AND ends_at > :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : '');
     $roomsStatement = $connection->prepare($roomsSql);
     $roomsStatement->execute($activeParams);
     $roomsInUse = (int) $roomsStatement->fetchColumn();
     $roomTotal = (int) $connection->query("SELECT COUNT(*) FROM rooms WHERE status <> 'inactive'")->fetchColumn();
-    $issues = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND ends_at < :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
+    $issues = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND checkin_mode='scheduled' AND ends_at <= :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
     $issueParams = [':now' => $now];
     if ($scopeSql) $issueParams[':viewer_id'] = $viewer['id'];
     $issues->execute($issueParams);
@@ -1079,9 +1135,9 @@ function report_data(string $period = 'month', int $roomId = 0): array
     $statement = db()->prepare(
         "SELECT COUNT(DISTINCT cs.id) AS total,
                 COUNT(ar.id) AS attendees,
-                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND cs.starts_at <= :now AND cs.ends_at >= :now THEN cs.id END) AS active,
+                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND (cs.checkin_mode='manual' OR (cs.starts_at <= :now AND cs.ends_at > :now)) THEN cs.id END) AS active,
                 COUNT(DISTINCT CASE WHEN cs.status = 'closed' THEN cs.id END) AS completed,
-                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND cs.ends_at < :now THEN cs.id END) AS overdue
+                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND cs.checkin_mode='scheduled' AND cs.ends_at <= :now THEN cs.id END) AS overdue
          FROM class_sessions cs LEFT JOIN attendance_records ar ON ar.class_session_id = cs.id
          WHERE {$whereSql}"
     );

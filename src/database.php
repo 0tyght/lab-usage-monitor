@@ -163,6 +163,7 @@ CREATE TABLE IF NOT EXISTS class_sessions (
     starts_at TEXT NOT NULL,
     ends_at TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('draft', 'open', 'closed', 'cancelled')),
+    checkin_mode TEXT NOT NULL DEFAULT 'scheduled' CHECK (checkin_mode IN ('scheduled', 'manual')),
     qr_token TEXT NOT NULL UNIQUE,
     notes TEXT NULL,
     schedule_id INTEGER NULL,
@@ -482,6 +483,7 @@ function ensure_sqlite_academic_columns(PDO $connection): void
     $additions = [
         'schedule_id' => 'ALTER TABLE class_sessions ADD COLUMN schedule_id INTEGER NULL',
         'scheduled_date' => 'ALTER TABLE class_sessions ADD COLUMN scheduled_date TEXT NULL',
+        'checkin_mode' => "ALTER TABLE class_sessions ADD COLUMN checkin_mode TEXT NOT NULL DEFAULT 'scheduled' CHECK (checkin_mode IN ('scheduled', 'manual'))",
     ];
 
     foreach ($additions as $name => $sql) {

@@ -8,7 +8,7 @@ if (!isset($_SESSION['one_off_requests'][$onceRequest])) {
     $_SESSION['one_off_requests'][$onceRequest] = 0;
     $_SESSION['one_off_requests'] = array_slice($_SESSION['one_off_requests'],-20,null,true);
 }
-$onceValues = array_replace(['room_id'=>$_GET['room_id'] ?? '', 'lecturer_user_id'=>$user['id'], 'class_date'=>$_GET['once_date'] ?? date('Y-m-d'), 'starts_time'=>'09:00', 'ends_time'=>'10:00', 'course_code'=>'', 'course_name'=>'', 'section'=>'', 'notes'=>''],$onceInput);
+$onceValues = array_replace(['room_id'=>$_GET['room_id'] ?? '', 'lecturer_user_id'=>$user['id'], 'class_date'=>$_GET['once_date'] ?? date('Y-m-d'), 'starts_time'=>'09:00', 'ends_time'=>'10:00', 'course_code'=>'', 'course_name'=>'', 'section'=>'', 'notes'=>'', 'checkin_mode'=>'scheduled'],$onceInput);
 $onceRooms = array_filter(list_rooms(),static fn(array $r): bool => $r['status']==='available');
 ?>
 <dialog id="one-off-dialog" class="term-dialog one-off-dialog" aria-labelledby="one-off-title" aria-describedby="one-off-description" <?= isset($_GET['new_once']) || $onceErrors?'open':'' ?>>
@@ -30,14 +30,18 @@ $onceRooms = array_filter(list_rooms(),static fn(array $r): bool => $r['status']
                 <?php endforeach; ?>
             </div>
             <?php if (!$onceRooms): ?><p class="alert alert--error">ยังไม่มีห้องพร้อมใช้งาน กรุณาตรวจสถานะห้องก่อนเพิ่มคาบ</p><?php endif; ?>
-            <div class="one-off-time-heading"><strong>เลือกช่วงเวลา</strong><small>คลิกช่องว่างเพื่อเลือก 1 ชั่วโมง หรือระบุเวลาเองด้านล่าง</small></div>
+            <div class="one-off-time-heading"><strong>เลือกช่วงเวลาได้หลายชั่วโมง</strong><small>คลิกช่องแรก แล้วคลิกช่องสุดท้ายเพื่อเลือกช่วงต่อเนื่อง หรือระบุเวลาเริ่ม–สิ้นสุดเอง</small></div>
             <p class="inline-note" role="status" data-once-availability>เลือกห้อง วันที่ และผู้สอนเพื่อตรวจเวลาว่าง</p>
             <div class="one-off-slots" data-once-slots aria-label="เลือกเวลาใช้ห้อง"></div>
+            <div class="one-off-range-summary"><p class="inline-note" role="status" data-once-range>เลือกเวลาเริ่มและสิ้นสุดด้านล่าง</p>
+            <button type="button" class="button button--secondary" data-once-reset-range>เริ่มเลือกช่วงใหม่</button></div>
             <button type="button" class="button button--secondary" data-once-retry hidden>ตรวจเวลาอีกครั้ง</button>
             <div class="form-grid">
                 <?php foreach (['starts_time'=>'เวลาเริ่ม','ends_time'=>'เวลาสิ้นสุด'] as $name=>$label): ?><div class="field"><label for="once-<?= $name ?>"><?= $label ?></label><input id="once-<?= $name ?>" type="time" name="<?= $name ?>" value="<?= e($onceValues[$name]) ?>" required aria-describedby="once-error-<?= $name ?>"><span class="field-error" id="once-error-<?= $name ?>" <?= isset($onceErrors[$name])?'':'hidden' ?>><?= e($onceErrors[$name] ?? '') ?></span></div><?php endforeach; ?>
-                <label class="field field--full"><span>หมายเหตุ (ไม่บังคับ)</span><textarea name="notes" rows="2" maxlength="500"><?= e($onceValues['notes']) ?></textarea></label>
+                <label class="field field--full"><span>การรับลงชื่อ</span><select name="checkin_mode" aria-describedby="once-mode-help"><option value="scheduled" <?= $onceValues['checkin_mode']==='scheduled'?'selected':'' ?>>รับตามเวลาเรียน และปิดอัตโนมัติเมื่อจบคาบ</option><option value="manual" <?= $onceValues['checkin_mode']==='manual'?'selected':'' ?>>เปิดรับทันทีเมื่อบันทึก จนกว่าผู้สอนกดปิดเอง</option></select></label>
             </div>
+            <p class="helper-text" id="once-mode-help" data-once-mode-help data-local-now="<?= e(date('Y-m-d\TH:i')) ?>">คาบที่เลือกปิดอัตโนมัติจะรับเฉพาะเวลาเรียน หากเป็นแบบร่าง ให้กดเปิดรับในหน้าคลาส ส่วนโหมดปิดเองจะเปิดรับทันทีแม้อยู่นอกเวลาเรียน</p>
+            <label class="field"><span>หมายเหตุ (ไม่บังคับ)</span><textarea name="notes" rows="2" maxlength="500"><?= e($onceValues['notes']) ?></textarea></label>
             <noscript><p>ระบบจะตรวจเวลาชนเมื่อกดบันทึก หากมีข้อผิดพลาด ข้อมูลที่กรอกจะยังอยู่</p></noscript>
         </div>
         <footer class="term-dialog__actions"><a class="button button--secondary" href="<?= e($oneOffReturnUrl) ?>" data-close-once>ยกเลิก</a><button class="button button--primary" type="submit" <?= !$onceRooms?'disabled':'' ?>>บันทึกคาบและเตรียม QR</button></footer>

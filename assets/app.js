@@ -628,6 +628,7 @@
     const activeFrom = q('[name="active_from"]', form);
     const activeUntil = q('[name="active_until"]', form);
     const message = q("[data-slot-selection]", form);
+    let rangeAnchor = null;
 
     const addMinutes = (time, minutes) => {
       const [hour, minute] = time.split(":").map(Number);
@@ -639,22 +640,37 @@
       slot.addEventListener("click", () => {
         const day = slot.dataset.slotDay;
         const start = slot.dataset.slotStart;
+        if (!rangeAnchor || rangeAnchor.day!==day) {
+          rangeAnchor={day,start}; startsInput.value=start; endsInput.value=addMinutes(start,60);
+        } else {
+          startsInput.value=start<rangeAnchor.start?start:rangeAnchor.start;
+          endsInput.value=addMinutes(start>rangeAnchor.start?start:rangeAnchor.start,60);
+          rangeAnchor=null;
+        }
         dayInput.value = day;
-        startsInput.value = start;
-        endsInput.value = addMinutes(start, 60);
-        qa(".schedule-empty-slot.is-selected").forEach((item) => item.classList.remove("is-selected"));
-        slot.classList.add("is-selected");
+        qa("[data-slot-start]").forEach((item) => {
+          const selected=item.dataset.slotDay===day && item.dataset.slotStart>=startsInput.value && item.dataset.slotStart<endsInput.value;
+          item.classList.toggle('is-selected',selected);item.setAttribute('aria-pressed',String(selected));
+        });
         const label = slot.getAttribute("aria-label") || "ช่องเวลาที่เลือก";
-        message.textContent = `${label} แล้ว สามารถปรับเวลาและกรอกรายวิชาต่อได้`;
+        message.textContent = `เลือก ${startsInput.value}–${endsInput.value} แล้ว${rangeAnchor?' · คลิกช่องสุดท้ายเพื่อเลือกหลายชั่วโมง':' · ตรวจห้องและผู้สอนในแบบฟอร์มก่อนบันทึก'}`;
         message.classList.add("is-selected");
         announce(`เลือก ${label} แล้ว`);
         if (window.matchMedia("(max-width: 640px)").matches) {
           form.scrollIntoView({ behavior: reduceMotion.matches ? "auto" : "smooth", block: "start" });
-        } else {
+        } else if (!rangeAnchor) {
           q('[name="course_code"]', form)?.focus();
         }
       });
     });
+    [dayInput,startsInput,endsInput].forEach((input)=>input.addEventListener('input',()=>{
+      rangeAnchor=null;
+      qa('[data-slot-start]').forEach((item)=>{
+        const selected=item.dataset.slotDay===dayInput.value && item.dataset.slotStart>=startsInput.value && item.dataset.slotStart<endsInput.value;
+        item.classList.toggle('is-selected',selected);item.setAttribute('aria-pressed',String(selected));
+      });
+      message.textContent=`ช่วงเวลา ${startsInput.value}–${endsInput.value} · ระบบจะตรวจทั้งภาคก่อนบันทึก`;
+    }));
 
     termInput?.addEventListener("change", () => {
       const option = termInput.selectedOptions[0];
@@ -663,8 +679,9 @@
       if (option.dataset.end) activeUntil.value = option.dataset.end;
     });
     form.addEventListener("reset", () => {
+      rangeAnchor=null;
       window.setTimeout(() => {
-        qa(".schedule-empty-slot.is-selected").forEach((item) => item.classList.remove("is-selected"));
+        qa(".schedule-empty-slot.is-selected").forEach((item) => { item.classList.remove("is-selected"); item.setAttribute('aria-pressed','false'); });
         message.textContent = "ยังไม่ได้เลือกช่องเวลา สามารถกรอกเองได้";
         message.classList.remove("is-selected");
       }, 0);

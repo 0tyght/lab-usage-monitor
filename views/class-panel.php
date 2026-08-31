@@ -4,6 +4,8 @@ $panelAttendance = class_attendance($panelClass['id']);
 $panelStudentUrl = public_class_url($panelClass['qr_token']);
 $panelStatus = class_display_status($panelClass);
 $panelAction = '?'.http_build_query(['page'=>'classes','class_id'=>$panelClass['id']]);
+$panelMode = $panelClass['checkin_mode'];
+$panelPast = time() >= strtotime($panelClass['ends_at']);
 ?>
 <div class="class-panel-content" data-panel-class="<?= $panelClass['id'] ?>" data-course-code="<?= e($panelClass['course_code']) ?>">
     <div class="class-panel-meta">
@@ -12,7 +14,22 @@ $panelAction = '?'.http_build_query(['page'=>'classes','class_id'=>$panelClass['
         <p><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
         <p><?= e($panelClass['lecturer_name']) ?><?= $panelClass['section']?' · กลุ่ม '.e($panelClass['section']):'' ?></p>
         <span class="status status--<?= e($panelStatus) ?>"><span></span><?= e(status_label($panelStatus)) ?></span>
+        <p class="helper-text">เวลาเรียนและเวลารับลงชื่อเป็นคนละส่วน · เปิดรับเพิ่มไม่เปลี่ยนการจองห้องหรือเวลาในรายงาน</p>
     </div>
+    <section class="class-admission-controls" aria-label="ควบคุมการรับลงชื่อ">
+        <p class="inline-note"><?= $panelMode==='manual'?'วิธีรับลงชื่อ: ผู้สอนกดเปิดและปิดเอง ไม่หยุดรับตามเวลาสิ้นสุดคาบ':'วิธีรับลงชื่อ: ตามเวลาเรียน จะหยุดรับอัตโนมัติเมื่อถึง '.e(thai_datetime($panelClass['ends_at'])) ?><?= $panelStatus==='overdue'?' · ยังไม่ได้กดปิดเอง แต่ระบบหยุดรับตามเวลาที่ตั้งไว้':'' ?></p>
+        <?php if ($panelClass['status']!=='cancelled'): ?>
+        <div class="admission-actions">
+            <form method="post" action="<?= e($panelAction) ?>" data-confirm="ยืนยันวิธีรับลงชื่อที่เลือก? หากเลือกเปิดจนกดปิดเอง นักศึกษาที่มีลิงก์จะลงชื่อได้ทันทีแม้พ้นเวลาเรียน กรุณาปิดรับเมื่อเสร็จ" data-confirm-title="ยืนยันการเปิดรับลงชื่อ" data-confirm-label="ยืนยันเปิดรับ">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="open_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>">
+                <label class="field"><span>วิธีเปิดรับลงชื่อ</span><select name="checkin_mode" aria-describedby="admission-mode-help"><option value="scheduled" <?= !$panelPast && $panelMode==='scheduled'?'selected':'' ?> <?= $panelPast?'disabled':'' ?>>รับเฉพาะเวลาเรียน (ปิดอัตโนมัติ)</option><option value="manual" <?= $panelPast || $panelMode==='manual'?'selected':'' ?>>เปิดรับตอนนี้จนกดปิดเอง</option></select></label>
+                <button class="button button--primary" type="submit"><?= $panelStatus==='open'?'ใช้วิธีที่เลือก':'เปิดรับการลงชื่อ' ?></button>
+            </form>
+            <?php if ($panelClass['status']==='open'): ?><form method="post" action="<?= e($panelAction) ?>" data-confirm="เมื่อปิดรับแล้ว นักศึกษาจะลงชื่อเพิ่มไม่ได้ ยืนยันหรือไม่?" data-confirm-title="ปิดรับการลงชื่อ" data-confirm-label="ปิดรับลงชื่อ"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="close_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>"><button class="button button--secondary" type="submit">ปิดรับการลงชื่อ</button></form><?php endif; ?>
+        </div>
+        <p class="helper-text" id="admission-mode-help">เลือก “เปิดรับตอนนี้จนกดปิดเอง” เพื่อรับนอกเวลาเรียน การเลือกอย่างเดียวยังไม่เปลี่ยนสถานะ ต้องกดปุ่มยืนยันก่อน</p>
+        <?php endif; ?>
+    </section>
     <div class="class-panel-columns">
         <section class="class-qr-section" aria-label="QR สำหรับคลาส">
             <div class="class-qr-poster" data-qr-poster>
@@ -22,17 +39,13 @@ $panelAction = '?'.http_build_query(['page'=>'classes','class_id'=>$panelClass['
                 <p data-poster-time><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
                 <div class="class-qr-code" data-class-qr="<?= e($panelStudentUrl) ?>" role="img" aria-label="QR สำหรับ <?= e($panelClass['course_code']) ?>"><span>กำลังสร้าง QR…</span></div>
                 <p class="qr-print-instruction">สแกน QR แล้วกรอกรหัสนิสิตและชื่อของตนเอง</p>
-                <?php if (in_array($panelClass['status'],['draft','closed','cancelled'],true) || $panelStatus==='overdue'): ?><p class="qr-state-note" data-poster-state><?= e(status_label($panelStatus)) ?> · ไม่รับการลงชื่อ<?= $panelClass['status']==='draft'?' ผู้สอนต้องเปิดรับก่อนใช้งาน':'' ?></p><?php endif; ?>
+                <p class="qr-state-note" data-poster-state><?= e(status_label($panelStatus)) ?> · <?= $panelMode==='manual'?'ผู้สอนควบคุมการเปิด–ปิดรับ':'รับเฉพาะช่วงเวลาเรียน' ?></p>
             </div>
             <div class="class-qr-actions"><button class="button button--secondary" type="button" data-download-qr disabled>ดาวน์โหลด QR (PNG)</button><button class="button button--primary" type="button" data-print-qr disabled>พิมพ์ QR / PDF</button></div>
             <p class="class-panel-feedback" data-class-feedback role="status"></p>
             <label class="field"><span>ลิงก์ลงชื่อสำหรับนักศึกษา</span><input data-class-link value="<?= e($panelStudentUrl) ?>" readonly></label>
             <button class="button button--secondary" type="button" data-class-copy>คัดลอกลิงก์</button>
             <p class="helper-text">พิมพ์เฉพาะป้าย QR และข้อมูลคาบ ไม่รวมรายชื่อนักศึกษา</p>
-            <div class="class-session-actions">
-            <?php if ($panelClass['status']==='draft'): ?><form method="post" action="<?= e($panelAction) ?>"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="open_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>"><button class="button button--primary" type="submit">เปิดรับการลงชื่อ</button></form>
-            <?php elseif ($panelClass['status']==='open'): ?><form method="post" action="<?= e($panelAction) ?>" data-confirm="เมื่อปิดรับแล้ว นักศึกษาจะลงชื่อเพิ่มไม่ได้ ยืนยันหรือไม่?" data-confirm-title="ปิดรับการลงชื่อ" data-confirm-label="ปิดรับลงชื่อ"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="close_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>"><button class="button button--secondary" type="submit">ปิดรับการลงชื่อ</button></form><?php endif; ?>
-            </div>
         </section>
         <section class="class-panel-attendance" aria-label="รายชื่อผู้ลงชื่อ">
             <div class="section-heading"><div><h3>ผู้ลงชื่อเข้าเรียน</h3><p><?= count($panelAttendance) ?> / <?= e($panelClass['capacity']) ?> คน</p></div><button class="button button--secondary" type="button" data-refresh-class>รีเฟรชรายชื่อ</button></div>

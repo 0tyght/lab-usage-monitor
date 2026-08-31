@@ -14,14 +14,22 @@ $expect = static function (bool $passed, string $message) use (&$checks): void {
     $checks++;
     echo "PASS: $message\n";
 };
-$request = static function (string $path, ?array $data = null) use (&$cookies): array {
+$request = static function (string $path, ?array $data = null, ?string $csvUpload = null) use (&$cookies): array {
     $headers = ['Content-Type: application/x-www-form-urlencoded'];
+    $content=$data === null ? '' : http_build_query($data);
+    if ($csvUpload !== null) {
+        $boundary='LumsTest'.bin2hex(random_bytes(12));
+        $headers=['Content-Type: multipart/form-data; boundary='.$boundary];
+        $content='';
+        foreach ($data ?? [] as $name=>$value) $content.="--{$boundary}\r\nContent-Disposition: form-data; name=\"{$name}\"\r\n\r\n{$value}\r\n";
+        $content.="--{$boundary}\r\nContent-Disposition: form-data; name=\"schedule_file\"; filename=\"test.csv\"\r\nContent-Type: text/csv\r\n\r\n{$csvUpload}\r\n--{$boundary}--\r\n";
+    }
     if ($cookies) $headers[] = 'Cookie: ' . implode('; ', $cookies);
     $context = stream_context_create(['http'=>[
         'method'=>$data === null ? 'GET' : 'POST', 'timeout'=>5,
         'ignore_errors'=>true, 'follow_location'=>0,
         'header'=>implode("\r\n", $headers),
-        'content'=>$data === null ? '' : http_build_query($data),
+        'content'=>$content,
     ]]);
     $body = file_get_contents('http://127.0.0.1' . $path, false, $context);
     $responseHeaders = $http_response_header ?? [];
@@ -159,3 +167,65 @@ $cookies=[];
 [$status] = $request('/?api=one-off-availability&date=2030-05-06&room_id='.$roomId);
 $expect($status===401,'Anonymous visitors cannot query booking availability');
 echo "Authenticated planning HTTP checks passed: $checks\n";
+
+// Admission lifecycle through the same endpoints used by the UI; synthetic data only.
+[, $login]=$request('/?page=login');
+$request('/?page=login',['action'=>'login','csrf_token'=>$csrf($login),'email'=>'admin@example.invalid','password'=>getenv('LUMS_ADMIN_PASSWORD')]);
+[, $classHub]=$request('/?page=classes&new_once=1');
+$expect(str_contains($classHub,'data-one-off-form') && str_contains($classHub,'data-once-range') && str_contains($classHub,'name="checkin_mode"'),'Class creation uses the shared multi-hour form and explicit admission policy');
+[,,$oldError]=$request('/?page=classes',['action'=>'create_class','csrf_token'=>$csrf($classHub),'course_code'=>'KEEPME','course_name'=>'สมมติ','starts_at'=>'2030-05-06T09:00','ends_at'=>'2030-05-06T13:00']);
+[, $oldDraft]=$request('/'.$oldError);
+$expect(str_contains($oldError,'new_once=1') && str_contains($oldDraft,'value="KEEPME"') && str_contains($oldDraft,'data-once-errors'),'Old creation endpoint retains failed input in the shared dialog');
+$pastStart=gmdate('Y-m-d\TH:i:s\Z',time()-14400); $pastEnd=gmdate('Y-m-d\TH:i:s\Z',time()-7200);
+db()->prepare("UPDATE class_sessions SET starts_at=?,ends_at=?,status='open',checkin_mode='scheduled' WHERE id=?")->execute([$pastStart,$pastEnd,$onceClassId]);
+[, $expiredPanel]=$request('/?fragment=class-panel&id='.$onceClassId);
+$expect(str_contains($expiredPanel,'สิ้นสุดเวลารับอัตโนมัติ') && str_contains($expiredPanel,'ยังไม่ได้กดปิดเอง'),'Expired automatic admission explains why it stopped');
+$admit=['action'=>'open_class','class_id'=>$onceClassId,'csrf_token'=>$csrf($expiredPanel),'checkin_mode'=>'scheduled'];
+$request('/?page=classes',$admit);
+$expect(db()->query('SELECT checkin_mode FROM class_sessions WHERE id='.$onceClassId)->fetchColumn()==='scheduled','Failed expired opening cannot silently switch policy');
+$request('/?page=classes',array_replace($admit,['checkin_mode'=>'manual']));
+[, $manualPanel]=$request('/?fragment=class-panel&id='.$onceClassId);
+$expect(str_contains($manualPanel,'ผู้สอนกดเปิดและปิดเอง') && !str_contains($manualPanel,'สิ้นสุดเวลารับอัตโนมัติ'),'Manual opening is consistently shown in the QR panel');
+$class=db()->query('SELECT * FROM class_sessions WHERE id='.$onceClassId)->fetch();
+$expect($class['starts_at']===$pastStart && $class['ends_at']===$pastEnd,'HTTP opening does not rewrite the lesson');
+$adminCookies=$cookies; $cookies=[];
+$publicPath='/?page=student-checkin&token='.$class['qr_token'];
+[, $studentForm]=$request($publicPath);
+$expect(str_contains($studentForm,'name="student_code"'),'Anonymous student can access manual admission after lesson end');
+$student=['action'=>'student_attendance','csrf_token'=>$csrf($studentForm),'token'=>$class['qr_token'],'student_code'=>'99998888','student_name'=>'นิสิตสมมติ ทดสอบ HTTP','client_request_id'=>'http-lifecycle-request-0001'];
+[$status,,$receipt]=$request($publicPath,$student);
+[, $receiptHtml]=$request('/'.$receipt);
+$expect($status===302 && str_contains($receiptHtml,'บันทึกเรียบร้อยแล้ว'),'Manual sign-in returns an actual success receipt');
+$request($publicPath,$student);
+$expect((int)db()->query('SELECT COUNT(*) FROM attendance_records WHERE class_session_id='.$onceClassId)->fetchColumn()===1,'Repeated HTTP check-in creates exactly one attendance record');
+$cookies=$adminCookies;
+$request('/?page=classes',['action'=>'close_class','csrf_token'=>$admit['csrf_token'],'class_id'=>$onceClassId]);
+$cookies=[];
+[, $closedForm]=$request($publicPath);
+$expect(str_contains($closedForm,'ปิดรับการลงชื่อแล้ว') && !str_contains($closedForm,'name="student_code"') && str_contains($closedForm,'ตรวจสอบอีกครั้ง'),'Closed public page blocks new submission and offers refresh');
+$cookies=$adminCookies;
+$request('/?page=classes',array_replace($admit,['checkin_mode'=>'manual']));
+$cookies=[];
+[, $reopened]=$request($publicPath);
+$expect(str_contains($reopened,'name="student_code"'),'Same public QR works after explicit reopening');
+$cookies=$adminCookies;
+
+// Real multipart uploads verify validation and all-or-nothing import.
+$importTerm=(int)db()->query("SELECT id FROM academic_terms WHERE academic_year=2569 AND semester='2'")->fetchColumn();
+[, $scheduleHtml]=$request('/?page=schedule&term_id='.$importTerm);
+$importData=['action'=>'import_schedule','term_id'=>$importTerm,'csrf_token'=>$csrf($scheduleHtml)];
+$csvHeader='course_code,course_name,section,room_code,lecturer_email,day_of_week,starts_time,ends_time,active_from,active_until,notes';
+$roomCode=db()->query('SELECT code FROM rooms WHERE id='.$roomId)->fetchColumn();
+$row="CSVGOOD,สมมตินำเข้า,1,{$roomCode},admin@example.invalid,7,17:00,19:00,2026-11-01,2026-11-30,";
+[,,$badCsv]=$request('/?page=schedule',$importData,$csvHeader."\n".$row.',extra');
+[, $badCsvHtml]=$request('/'.$badCsv);
+$expect(str_contains($badCsvHtml,'จำนวนคอลัมน์เกินหัวตาราง'),'Extra CSV columns return a readable validation error, not HTTP 500');
+[,,$duplicateHeader]=$request('/?page=schedule',$importData,$csvHeader.",course_code\n".$row.',DUP');
+[, $duplicateHtml]=$request('/'.$duplicateHeader);
+$expect(str_contains($duplicateHtml,'ชื่อคอลัมน์ซ้ำ'),'Duplicate CSV headers are rejected');
+[,,$atomicFailure]=$request('/?page=schedule',$importData,$csvHeader."\n".$row."\n\n".str_replace('CSVGOOD','CSVCONFLICT',$row));
+[, $atomicHtml]=$request('/'.$atomicFailure);
+$expect(str_contains($atomicHtml,'แถว 4:') && (int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code LIKE 'CSV%'")->fetchColumn()===0,'Conflict rolls back the whole import and reports the actual CSV line');
+$request('/?page=schedule',$importData,$csvHeader."\n".$row);
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='CSVGOOD'")->fetchColumn()===1,'Corrected CSV imports successfully after rollback');
+echo "HTTP workflow checks passed: $checks\n";
