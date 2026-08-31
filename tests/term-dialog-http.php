@@ -123,7 +123,7 @@ echo "Term and planning HTTP checks passed: $checks\n";
 [, $onceForm] = $request('/?page=calendar&new_once=1&once_date=2030-05-06&room_id='.$roomId);
 $expect(str_contains($onceForm,'id="one-off-dialog"') && str_contains($onceForm,'value="2030-05-06"'), 'One-off popup retains the selected calendar date');
 preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$onceForm,$onceToken);
-$onceInput=['action'=>'create_one_off','one_off_request'=>$onceToken[1],'csrf_token'=>$csrf($onceForm),'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'class_date'=>'2030-05-06','starts_time'=>'09:00','ends_time'=>'10:00','course_code'=>'ONCEHTTP','course_name'=>'คาบครั้งเดียวทดสอบ'];
+$onceInput=['action'=>'create_one_off','one_off_request'=>$onceToken[1],'csrf_token'=>$csrf($onceForm),'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'class_date'=>'2030-05-06','starts_time'=>'09:00','ends_time'=>'10:00','course_code'=>'ONCEHTTP','course_name'=>'คลาสเรียนทดสอบ'];
 [$status, , $onceLocation] = $request('/?page=calendar',$onceInput);
 $expect($status===302 && str_contains($onceLocation,'class_id=') && str_contains($onceLocation,'page=calendar'), 'One-off save opens its QR popup on the calendar');
 [$status, , $replayLocation] = $request('/?page=calendar',$onceInput);
@@ -138,9 +138,9 @@ preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$onceAgain,$newToken);
 [, $conflictHtml] = $request('/'.$conflictLocation);
 $expect(str_contains($conflictLocation,'new_once=1') && str_contains($conflictHtml,'data-once-errors') && str_contains($conflictHtml,'value="ONCEHTTP"'),'Conflict retains the draft in the popup');
 [, $onceCalendar] = $request('/?page=calendar&month=2030-05');
-$expect(str_contains($onceCalendar,'ONCEHTTP') && str_contains($onceCalendar,'คาบครั้งเดียว'),'Saved one-off appears in the calendar');
+$expect(str_contains($onceCalendar,'ONCEHTTP') && str_contains($onceCalendar,'คลาสเรียนแบบครั้งเดียว'),'Saved one-off appears in the calendar');
 [, $onceWeek] = $request('/?page=schedule&week=2030-05-06');
-$expect(str_contains($onceWeek,'ONCEHTTP') && str_contains($onceWeek,'คาบครั้งเดียวในสัปดาห์นี้'),'Weekly page includes standalone classes');
+$expect(str_contains($onceWeek,'ONCEHTTP') && str_contains($onceWeek,'คลาสเรียนแบบครั้งเดียวในสัปดาห์นี้'),'Weekly page includes standalone classes');
 echo "All term/planning/one-off HTTP checks passed: $checks\n";
 $onceClassId=(int)db()->query("SELECT id FROM class_sessions WHERE course_code='ONCEHTTP'")->fetchColumn();
 [$status, , $legacyLocation]=$request('/?page=class-detail&id='.$onceClassId);
@@ -229,3 +229,15 @@ $expect(str_contains($atomicHtml,'แถว 4:') && (int)db()->query("SELECT COU
 $request('/?page=schedule',$importData,$csvHeader."\n".$row);
 $expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='CSVGOOD'")->fetchColumn()===1,'Corrected CSV imports successfully after rollback');
 echo "HTTP workflow checks passed: $checks\n";
+foreach (['classes','calendar','schedule'] as $copyPage) {
+    [, $copyHtml]=$request('/?page='.$copyPage.'&new_once=1');
+    $copyDom=new DOMDocument(); @$copyDom->loadHTML('<?xml encoding="UTF-8">'.$copyHtml);
+    $copyXPath=new DOMXPath($copyDom);
+    $expect($copyXPath->evaluate('string(//*[@id="one-off-title"])')==='สร้างคลาสเรียน','Shared dialog uses canonical title on '.$copyPage);
+    $expect(trim($copyXPath->evaluate('string(//*[@id="one-off-dialog"]//button[@type="submit"])'))==='สร้างคลาสเรียน','Submit uses canonical action on '.$copyPage);
+    $copyActions=$copyXPath->query('//*[@data-open-once]');
+    $sameLabel=$copyActions->length>0;
+    foreach ($copyActions as $copyAction) $sameLabel=$sameLabel && trim($copyAction->textContent)==='สร้างคลาสเรียน';
+    $expect($sameLabel && !str_contains($copyHtml,'เพิ่มคาบ'),'Entry points use one action name on '.$copyPage);
+}
+echo "HTTP workflows and terminology checks passed: $checks\n";

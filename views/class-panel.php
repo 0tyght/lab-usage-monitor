@@ -17,7 +17,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
         <p class="helper-text">เวลาเรียนและเวลารับลงชื่อเป็นคนละส่วน · เปิดรับเพิ่มไม่เปลี่ยนการจองห้องหรือเวลาในรายงาน</p>
     </div>
     <section class="class-admission-controls" aria-label="ควบคุมการรับลงชื่อ">
-        <p class="inline-note"><?= $panelMode==='manual'?'วิธีรับลงชื่อ: ผู้สอนกดเปิดและปิดเอง ไม่หยุดรับตามเวลาสิ้นสุดคาบ':'วิธีรับลงชื่อ: ตามเวลาเรียน จะหยุดรับอัตโนมัติเมื่อถึง '.e(thai_datetime($panelClass['ends_at'])) ?><?= $panelStatus==='overdue'?' · ยังไม่ได้กดปิดเอง แต่ระบบหยุดรับตามเวลาที่ตั้งไว้':'' ?></p>
+        <p class="inline-note"><?= $panelMode==='manual'?'วิธีรับลงชื่อ: ผู้สอนกดเปิดและปิดเอง ไม่หยุดรับตามเวลาสิ้นสุดเวลาเรียน':'วิธีรับลงชื่อ: ตามเวลาเรียน จะหยุดรับอัตโนมัติเมื่อถึง '.e(thai_datetime($panelClass['ends_at'])) ?><?= $panelStatus==='overdue'?' · ยังไม่ได้กดปิดเอง แต่ระบบหยุดรับตามเวลาที่ตั้งไว้':'' ?></p>
         <?php if ($panelClass['status']!=='cancelled'): ?>
         <div class="admission-actions">
             <form method="post" action="<?= e($panelAction) ?>" data-confirm="ยืนยันวิธีรับลงชื่อที่เลือก? หากเลือกเปิดจนกดปิดเอง นักศึกษาที่มีลิงก์จะลงชื่อได้ทันทีแม้พ้นเวลาเรียน กรุณาปิดรับเมื่อเสร็จ" data-confirm-title="ยืนยันการเปิดรับลงชื่อ" data-confirm-label="ยืนยันเปิดรับ">
@@ -45,7 +45,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
             <p class="class-panel-feedback" data-class-feedback role="status"></p>
             <label class="field"><span>ลิงก์ลงชื่อสำหรับนักศึกษา</span><input data-class-link value="<?= e($panelStudentUrl) ?>" readonly></label>
             <button class="button button--secondary" type="button" data-class-copy>คัดลอกลิงก์</button>
-            <p class="helper-text">พิมพ์เฉพาะป้าย QR และข้อมูลคาบ ไม่รวมรายชื่อนักศึกษา</p>
+            <p class="helper-text">พิมพ์เฉพาะป้าย QR และข้อมูลคลาสเรียน ไม่รวมรายชื่อนักศึกษา</p>
         </section>
         <section class="class-panel-attendance" aria-label="รายชื่อผู้ลงชื่อ">
             <div class="section-heading"><div><h3>ผู้ลงชื่อเข้าเรียน</h3><p><?= count($panelAttendance) ?> / <?= e($panelClass['capacity']) ?> คน</p></div><button class="button button--secondary" type="button" data-refresh-class>รีเฟรชรายชื่อ</button></div>

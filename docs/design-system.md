@@ -93,6 +93,8 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 
 ## Content style
 
+- Canonical action: `สร้างคลาสเรียน` for a class on one date. Use the same label on entry buttons, dialog title and submit; success is `สร้างคลาสเรียนแล้ว`. Mention automatic QR preparation in helper text, not a competing action name.
+- Use `คลาสเรียนแบบครั้งเดียว` only as a type/section label when distinguishing it from a recurring plan. Use `เพิ่มตารางเรียนรายสัปดาห์` for recurring scheduling. Reserve `คาบ` for the duration unit in reports; do not use `เพิ่มคาบ` as an alternative creation action.
 - Use direct Thai labels: `สแกน QR Code`, `บันทึกการเข้าใช้`, `ลองอีกครั้ง`, `ดาวน์โหลดรายงาน`.
 - Errors should say what happened and how to recover.
 - Avoid vague labels such as `ตกลง`, `ดำเนินการ`, or `ส่ง` when a specific verb is available.
@@ -107,4 +109,3 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 - Can the workflow be completed with keyboard only?
 - Does the mobile layout preserve task priority rather than merely stack desktop content?
 - Is every status understandable without relying on color?
-

@@ -25,7 +25,7 @@ $calendarCloseUrl = '?' . http_build_query($calendarQuery);
 $calendarExport = ['date_from'=>$calendarMonth->format('Y-m-d'),'date_to'=>$calendarMonth->modify('last day of this month')->format('Y-m-d'),'source'=>'all'];
 ?>
 <section class="calendar-page">
-<header class="page-header"><div><p class="eyebrow">ภาพรวมทุกห้องตามสิทธิ์ของคุณ</p><h1>ปฏิทินการใช้ห้อง</h1><p>ชี้วันที่เพื่อดูสรุป คลิกเพื่อดูตารางรายวันและเลือกห้อง</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog">เพิ่มคาบครั้งเดียว</a><a class="button button--secondary" href="?<?= e(http_build_query(['download'=>'report-csv']+$calendarExport)) ?>" title="ส่งออกเดือนที่แสดงบนปฏิทิน">ส่งออก CSV</a><button class="button button--secondary" type="button" data-print-calendar>พิมพ์ปฏิทิน</button></div></header>
+<header class="page-header"><div><p class="eyebrow">ภาพรวมทุกห้องตามสิทธิ์ของคุณ</p><h1>ปฏิทินการใช้ห้อง</h1><p>ชี้วันที่เพื่อดูสรุป คลิกเพื่อดูตารางรายวันและเลือกห้อง</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog">สร้างคลาสเรียน</a><a class="button button--secondary" href="?<?= e(http_build_query(['download'=>'report-csv']+$calendarExport)) ?>" title="ส่งออกเดือนที่แสดงบนปฏิทิน">ส่งออก CSV</a><button class="button button--secondary" type="button" data-print-calendar>พิมพ์ปฏิทิน</button></div></header>
 <?php if ($calendarErrors): ?><div class="alert alert--error" role="alert"><?= e(implode(' ', $calendarErrors)) ?><a href="<?= e($calendarCloseUrl) ?>">ลองอีกครั้ง</a></div><?php else: ?>
 <div class="calendar-toolbar"><div class="button-group"><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>$calendarMonth->modify('-1 month')->format('Y-m')]))) ?>" aria-label="เดือนก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>date('Y-m')]))) ?>">เดือนนี้</a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>$calendarMonth->modify('+1 month')->format('Y-m')]))) ?>" aria-label="เดือนถัดไป"><span data-icon="chevron-right"></span></a></div><h2><?= e(thai_month_label($calendarFilters['month'])) ?></h2><span class="result-count">เวลาไทย (UTC+7)</span></div>
 <p class="calendar-legend"><span><i class="calendar-dot"></i>มีรายการตามแผนหรือคลาส</span><span>ตัวเลข = จำนวนรายการในวันนั้น</span></p>
@@ -44,7 +44,7 @@ $calendarExport = ['date_from'=>$calendarMonth->format('Y-m-d'),'date_to'=>$cale
         </a>
     <?php endfor; ?>
 </div>
-<p class="helper-text">แสดงข้อมูลตามสิทธิ์ของบัญชี รายการตามแผนไม่ใช่หลักฐานว่ามีการใช้ห้องจริง และอาจต้องงดบางคาบในวันหยุดหรือช่วงสอบ</p>
+<p class="helper-text">แสดงข้อมูลตามสิทธิ์ของบัญชี รายการตามแผนไม่ใช่หลักฐานว่ามีการใช้ห้องจริง และอาจต้องงดบางครั้งในวันหยุดหรือช่วงสอบ</p>
 <?php endif; ?>
 </section>
 <dialog id="calendar-day-dialog" class="term-dialog day-dialog" aria-labelledby="calendar-day-title" <?= $dayDate && !$calendarErrors?'open':'' ?>>
@@ -56,7 +56,7 @@ $calendarExport = ['date_from'=>$calendarMonth->format('Y-m-d'),'date_to'=>$cale
         </form>
         <p data-day-count aria-live="polite"><?= count($dayRows) ?> รายการ</p>
         <p class="print-room-context" data-day-print-room>ห้อง: <?= e($dayRoomId ? array_values(array_filter($calendarRooms,static fn(array $r): bool => $r['id']===$dayRoomId))[0]['code'] : 'ทุกห้อง') ?></p>
-        <p><a class="button button--secondary" data-day-once href="?<?= e(http_build_query(array_replace($calendarQuery,['new_once'=>1,'once_date'=>$dayDate,'room_id'=>$dayRoomId]))) ?>">เพิ่มคาบครั้งเดียวในวันนี้</a></p>
+        <p><a class="button button--secondary" data-day-once href="?<?= e(http_build_query(array_replace($calendarQuery,['new_once'=>1,'once_date'=>$dayDate,'room_id'=>$dayRoomId]))) ?>">สร้างคลาสเรียน</a></p>
         <div data-day-content>
             <?php if (!$dayRows): ?><div class="empty-state"><strong>ไม่พบรายการในห้องและวันที่เลือก</strong><span>ลองเลือกทุกห้อง หรือเลือกวันอื่น</span></div><?php else: ?><div class="table-wrap"><table class="data-table"><thead><tr><th>เวลา</th><th>ห้อง</th><th>รายวิชา</th><th>ผู้สอน</th></tr></thead><tbody><?php foreach ($dayRows as $r): ?><tr><td><?= e($r['start_time'].'–'.$r['end_time']) ?></td><td><?= e($r['room_code']) ?></td><td><?= e($r['course_code'].' '.$r['course_name']) ?></td><td><?= e($r['lecturer_name']) ?></td></tr><?php endforeach; ?></tbody></table></div><?php endif; ?>
         </div>

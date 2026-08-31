@@ -154,7 +154,7 @@ function room_usage_slices(array $events, string $from, string $to, string $time
 
 function usage_source_label(array $event): string
 {
-    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) ? 'คาบครั้งเดียว · ' : '') . match ($event['display_status'] ?? class_checkin_status($event)) {
+    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) ? 'คลาสเรียนแบบครั้งเดียว · ' : '') . match ($event['display_status'] ?? class_checkin_status($event)) {
         'draft'=>'คลาสแบบร่าง', 'closed'=>'คลาสปิดรับแล้ว',
         'overdue'=>'สิ้นสุดเวลารับอัตโนมัติ', 'scheduled'=>'คลาสรอเวลาเริ่ม', 'cancelled'=>'คลาสยกเลิก', default=>'คลาสเปิดลงชื่อ',
     };

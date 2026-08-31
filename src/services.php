@@ -300,7 +300,7 @@ function validate_schedule_input(array $input, int $ignoreId = 0): array
     }
 
     if (recurring_conflicts_with_one_off((int)$roomId,(int)$lecturerId,(int)$day,$activeFrom,$activeUntil,$startsTime,$endsTime)) {
-        return ['ok'=>false,'message'=>'ห้องหรือผู้สอนมีคาบครั้งเดียวในช่วงนี้แล้ว','errors'=>['form'=>'ห้องหรือผู้สอนมีคาบครั้งเดียวในช่วงนี้แล้ว กรุณาเปลี่ยนช่วงเวลา']];
+        return ['ok'=>false,'message'=>'ห้องหรือผู้สอนมีคลาสเรียนแบบครั้งเดียวในช่วงนี้แล้ว','errors'=>['form'=>'ห้องหรือผู้สอนมีคลาสเรียนแบบครั้งเดียวในช่วงนี้แล้ว กรุณาเปลี่ยนช่วงเวลา']];
     }
     return ['ok'=>true, 'data'=>[
         'term_id'=>(int)$termId, 'room_id'=>(int)$roomId, 'lecturer_user_id'=>(int)$lecturerId,
@@ -328,7 +328,7 @@ function create_course_schedule(array $input): array
     ]);
     $id = (int) db()->lastInsertId();
     audit_log('course_schedule_created', 'course_schedule', $id, ['course_code'=>$data['course_code'], 'room_id'=>$data['room_id']], (int)$user['id']);
-    return ['ok'=>true, 'id'=>$id, 'message'=>'เพิ่มตารางเรียนเรียบร้อย'];
+    return ['ok'=>true, 'id'=>$id, 'message'=>'เพิ่มตารางเรียนรายสัปดาห์แล้ว'];
 }
 
 function cancel_course_schedule(int $id): array
@@ -434,16 +434,16 @@ function create_session_from_schedule(int $scheduleId, string $date): array
     $schedule = get_course_schedule($scheduleId);
     $user = current_user();
     if (!$schedule || !$user || !in_array($user['role'],['admin','lecturer'],true)) return ['ok'=>false, 'message'=>'ไม่พบตารางเรียนหรือไม่มีสิทธิ์'];
-    if ($schedule['status']!=='active') return ['ok'=>false,'message'=>'ตารางนี้ถูกยกเลิกแล้ว ไม่สามารถสร้างคาบใหม่'];
-    if (!valid_iso_date($date)) return ['ok'=>false, 'message'=>'วันที่คาบเรียนไม่ถูกต้อง'];
+    if ($schedule['status']!=='active') return ['ok'=>false,'message'=>'ตารางนี้ถูกยกเลิกแล้ว ไม่สามารถสร้างคลาสเรียนใหม่'];
+    if (!valid_iso_date($date)) return ['ok'=>false, 'message'=>'วันที่คลาสเรียนไม่ถูกต้อง'];
     $day = (int)(new DateTimeImmutable($date))->format('N');
     if ($day !== $schedule['day_of_week'] || $date < $schedule['active_from'] || $date > $schedule['active_until']) return ['ok'=>false, 'message'=>'วันที่นี้ไม่ตรงกับตารางเรียน'];
     $existing = db()->prepare('SELECT id FROM class_sessions WHERE schedule_id=:schedule_id AND scheduled_date=:date LIMIT 1');
     $existing->execute([':schedule_id'=>$scheduleId, ':date'=>$date]);
-    if (($id = $existing->fetchColumn()) !== false) return ['ok'=>true, 'id'=>(int)$id, 'existing'=>true, 'message'=>'มี QR สำหรับคาบนี้แล้ว'];
+    if (($id = $existing->fetchColumn()) !== false) return ['ok'=>true, 'id'=>(int)$id, 'existing'=>true, 'message'=>'มี QR สำหรับคลาสเรียนนี้แล้ว'];
     $startsAt = local_datetime_to_utc($date . 'T' . $schedule['starts_time']);
     $endsAt = local_datetime_to_utc($date . 'T' . $schedule['ends_time']);
-    if (!$startsAt || !$endsAt) return ['ok'=>false, 'message'=>'ไม่สามารถคำนวณเวลาคาบเรียนได้'];
+    if (!$startsAt || !$endsAt) return ['ok'=>false, 'message'=>'ไม่สามารถคำนวณเวลาเรียนได้'];
     $nowTs = time();
     $status = $nowTs >= strtotime($startsAt) - 1800 && $nowTs < strtotime($endsAt) ? 'open' : 'draft';
     $now = utc_now();
@@ -454,7 +454,7 @@ function create_session_from_schedule(int $scheduleId, string $date): array
     ]);
     $id = (int)db()->lastInsertId();
     audit_log('class_created_from_schedule', 'class_session', $id, ['schedule_id'=>$scheduleId, 'scheduled_date'=>$date], (int)$user['id']);
-    return ['ok'=>true, 'id'=>$id, 'status'=>$status, 'message'=>$status === 'open' ? 'สร้าง QR และเปิดรับลงชื่อแล้ว' : 'เตรียม QR สำหรับคาบนี้แล้ว'];
+    return ['ok'=>true, 'id'=>$id, 'status'=>$status, 'message'=>$status === 'open' ? 'สร้าง QR และเปิดรับลงชื่อแล้ว' : 'เตรียม QR สำหรับคลาสเรียนนี้แล้ว'];
 }
 
 /** Attendance policy is independent of room reservation time. */
@@ -479,7 +479,7 @@ function open_class_session(int $id, string $mode = 'scheduled'): array
     $statement = db()->prepare("UPDATE class_sessions SET status='open', checkin_mode=:mode, updated_at=:updated_at WHERE id=:id AND status IN ('draft','open','closed')");
     $statement->execute([':mode'=>$mode, ':updated_at'=>utc_now(), ':id'=>$id]);
     audit_log('class_opened', 'class_session', $id, ['checkin_mode'=>$mode,'previous_status'=>$session['status']], (int)$user['id']);
-    return ['ok'=>true, 'message'=>$mode==='manual'?'เปิดรับทันทีจนกว่าผู้สอนจะกดปิดเอง เวลาเรียนและการจองห้องเดิมไม่เปลี่ยน':(time()<strtotime($session['starts_at'])?'ตั้งให้รับลงชื่อตามเวลาเรียนแล้ว ขณะนี้ยังรอเวลาเริ่ม':'เปิดรับตามเวลาเรียน และจะหยุดรับอัตโนมัติเมื่อสิ้นสุดคาบ')];
+    return ['ok'=>true, 'message'=>$mode==='manual'?'เปิดรับทันทีจนกว่าผู้สอนจะกดปิดเอง เวลาเรียนและการจองห้องเดิมไม่เปลี่ยน':(time()<strtotime($session['starts_at'])?'ตั้งให้รับลงชื่อตามเวลาเรียนแล้ว ขณะนี้ยังรอเวลาเริ่ม':'เปิดรับตามเวลาเรียน และจะหยุดรับอัตโนมัติเมื่อสิ้นสุดเวลาเรียน')];
 }
 
 function class_session_select_sql(): string
@@ -677,7 +677,7 @@ function create_validated_class_session(array $input): array
     $id = (int) $connection->lastInsertId();
     audit_log('class_created', 'class_session', $id, ['room_id' => (int) $roomId, 'course_code' => $courseCode], (int) $operator['id']);
 
-    return ['ok' => true, 'id' => $id, 'status'=>$status, 'message' => $status === 'open' ? 'สร้างคลาสและเปิดรับลงชื่อแล้ว' : 'สร้างคลาสและเตรียม QR Code แบบร่างแล้ว'];
+    return ['ok' => true, 'id' => $id, 'status'=>$status, 'message' => $status === 'open' ? 'สร้างคลาสเรียนและเปิดรับลงชื่อแล้ว' : 'สร้างคลาสเรียนและเตรียม QR Code แบบร่างแล้ว'];
 }
 
 function close_class_session(int $id): array

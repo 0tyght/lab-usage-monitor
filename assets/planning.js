@@ -164,7 +164,7 @@
         if (!event.class_id) {
           const form=node('form'); form.method='post'; form.action=`?${new URLSearchParams({page:'calendar',month:date.slice(0,7)})}`;
           Object.entries({csrf_token:context.csrf_token,action:'create_schedule_session',schedule_id:event.schedule_id,scheduled_date:date}).forEach(([name,value])=>{const input=node('input');input.type='hidden';input.name=name;input.value=String(value);form.append(input);});
-          const prepare=node('button','เตรียม QR คาบนี้','button button--primary');prepare.type='submit';form.append(prepare);actions.append(form);
+          const prepare=node('button','เตรียม QR สำหรับคลาสเรียนนี้','button button--primary');prepare.type='submit';form.append(prepare);actions.append(form);
         }
         actions.append(link);
         row.append(node("strong", `${event.start_time}–${event.end_time}`), detail, actions);

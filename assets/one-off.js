@@ -17,8 +17,8 @@
   const updatePolicyHint = () => {
     const past=field('class_date').value && end.value && `${field('class_date').value}T${end.value}`<=modeHelp.dataset.localNow;
     modeHelp.textContent=field('checkin_mode').value==='manual'
-      ? 'จะเปิดรับลงชื่อทันทีหลังบันทึก แม้เป็นคาบในอดีตหรืออนาคต และรับต่อจนผู้สอนกดปิดเอง เวลาเรียนยังคงเดิม'
-      : past ? 'คาบนี้พ้นเวลาที่เลือกแล้ว จะบันทึกเป็นแบบร่างและยังลงชื่อไม่ได้ หากต้องการรับตอนนี้ ให้เลือกเปิดจนผู้สอนกดปิดเอง'
+      ? 'จะเปิดรับลงชื่อทันทีหลังบันทึก แม้เป็นคลาสเรียนในอดีตหรืออนาคต และรับต่อจนผู้สอนกดปิดเอง เวลาเรียนยังคงเดิม'
+      : past ? 'คลาสเรียนนี้พ้นเวลาที่เลือกแล้ว จะบันทึกเป็นแบบร่างและยังลงชื่อไม่ได้ หากต้องการรับตอนนี้ ให้เลือกเปิดจนผู้สอนกดปิดเอง'
       : 'รับเฉพาะเวลาเรียนและหยุดเมื่อถึงเวลาสิ้นสุด หากเป็นแบบร่าง ให้ผู้สอนกดเปิดรับในหน้าคลาสก่อนใช้งาน';
   };
   const error = (input, text) => {
@@ -33,7 +33,7 @@
     const conflict = busy.find((item) => a<item.end && b>item.start);
     let text = '';
     if (!start.value || !end.value || b<=a) text='เลือกเวลาสิ้นสุดหลังเวลาเริ่มในวันเดียวกัน';
-    else if (b-a>720) text='คาบหนึ่งครั้งต้องไม่เกิน 12 ชั่วโมง';
+    else if (b-a>720) text='คลาสเรียนหนึ่งครั้งต้องไม่เกิน 12 ชั่วโมง';
     else if (ready && conflict) text=`${conflict.reason} ${time(conflict.start)}–${time(conflict.end)} กรุณาเปลี่ยนช่วงเวลา`;
     error(end,text);
     submit.disabled=!ready || Boolean(text);
@@ -50,7 +50,7 @@
     error(end,'');
     const date=field('class_date').value, room=field('room_id').value, lecturer=field('lecturer_user_id').value;
     if (!date || !room || !lecturer) { message.textContent='เลือกวันที่ ห้อง และผู้สอนเพื่อตรวจเวลาว่าง'; return; }
-    message.textContent='กำลังตรวจตารางทั้งภาคและคาบที่มีอยู่…';
+    message.textContent='กำลังตรวจตารางทั้งภาคและคลาสเรียนที่มีอยู่…';
     message.setAttribute('aria-busy','true');
     controller=new AbortController();
     const currentController=controller;
@@ -61,7 +61,7 @@
       if (current!==request) return;
       if (!response.ok || !result.ok) throw new Error(result.message || 'ตรวจเวลาไม่สำเร็จ');
       busy=result.busy; ready=true;
-      message.textContent=busy.length?'ช่องที่ระบุ “ไม่ว่าง” มีห้องหรือผู้สอนติดคาบอยู่ เลือกช่องอื่นหรือระบุเวลาเอง':'ไม่พบเวลาชนของห้องและผู้สอนในวันนี้ เลือกช่วงเวลาที่ต้องการ';
+      message.textContent=busy.length?'ช่องที่ระบุ “ไม่ว่าง” มีห้องหรือผู้สอนมีคลาสเรียนอยู่ เลือกช่องอื่นหรือระบุเวลาเอง':'ไม่พบเวลาชนของห้องและผู้สอนในวันนี้ เลือกช่วงเวลาที่ต้องการ';
       for(let hour=8;hour<20;hour++) {
         const a=hour*60, b=a+60, conflict=busy.find((item)=>a<item.end && b>item.start);
         const button=document.createElement('button');

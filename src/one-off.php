@@ -16,7 +16,7 @@ function one_off_busy_times(int $roomId, int $lecturerId, string $date): array
     foreach ($query->fetchAll() as $row) {
         $begin = max(strtotime($start), strtotime($row['starts_at']));
         $finish = min(strtotime($end), strtotime($row['ends_at']));
-        $busy[] = ['start'=>(int)(($begin-strtotime($start))/60), 'end'=>(int)(($finish-strtotime($start))/60), 'reason'=>(int)$row['room_id']===$roomId?'ห้องมีคาบแล้ว':'ผู้สอนมีคาบแล้ว'];
+        $busy[] = ['start'=>(int)(($begin-strtotime($start))/60), 'end'=>(int)(($finish-strtotime($start))/60), 'reason'=>(int)$row['room_id']===$roomId?'ห้องมีคลาสเรียนแล้ว':'ผู้สอนมีคลาสเรียนแล้ว'];
     }
     $query = db()->prepare("SELECT s.room_id,s.starts_time,s.ends_time FROM course_schedules s WHERE s.status='active' AND (s.room_id=:room OR s.lecturer_user_id=:lecturer) AND s.day_of_week=:day AND s.active_from<=:date AND s.active_until>=:date AND NOT EXISTS (SELECT 1 FROM class_sessions cs WHERE cs.schedule_id=s.id AND cs.scheduled_date=:date)");
     $query->execute([':room'=>$roomId, ':lecturer'=>$lecturerId, ':day'=>(int)$day->format('N'), ':date'=>$date]);
@@ -38,7 +38,7 @@ function one_off_lecturer_id(array $input): int
 function create_one_off_session(array $input): array
 {
     $viewer = current_user();
-    if (!$viewer || !in_array($viewer['role'], ['admin','lecturer'], true)) return ['ok'=>false,'errors'=>['form'=>'ไม่มีสิทธิ์เพิ่มคาบ']];
+    if (!$viewer || !in_array($viewer['role'], ['admin','lecturer'], true)) return ['ok'=>false,'errors'=>['form'=>'ไม่มีสิทธิ์สร้างคลาสเรียน']];
     $date = (string)($input['class_date'] ?? '');
     $start = (string)($input['starts_time'] ?? '');
     $end = (string)($input['ends_time'] ?? '');
