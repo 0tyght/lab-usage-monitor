@@ -31,6 +31,7 @@ jobs:
           node --check assets/class-panel.js
           node --check assets/class-change.js
           node --check assets/timetable.js
+          node --check assets/room-qr.js
 
       - name: Verify production bootstrap
         run: |
@@ -64,6 +65,11 @@ jobs:
       - name: Test atomic multi-slot classes and scoped changes
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/class-batch-regression.php
 
+      - name: Test permanent room QR and outside-class visits
+        run: |
+          docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/room-visits-regression.php
+          docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/room-visits-concurrency.php
+
       - name: Verify HTTP serving and private file isolation
         run: |
           docker run --rm --entrypoint apache2ctl lums-ci:${{ github.sha }} -t
@@ -80,6 +86,7 @@ jobs:
           trap 'docker logs lums-http-check; docker rm -f lums-http-check' EXIT
           docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/http-smoke.php
           docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/term-dialog-http.php
+          docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/room-visits-http.php
           docker exec lums-http-check php scripts/online-preflight.php
           if docker exec -e LUMS_SECURE_COOKIES=false lums-http-check php scripts/online-preflight.php; then
             echo 'Unsafe online configuration was accepted'

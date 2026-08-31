@@ -7,6 +7,16 @@ const token = 'a'.repeat(32);
 const runtime = { schemaVersion: 1, status: 'online', origin: 'https://unit-test-lums.trycloudflare.com', gatewayId: token };
 const response = (data, status = 200) => ({ ok: status === 200, status, json: async () => data });
 
+test('permanent room QR survives tunnel changes without leaking other query fields', async () => {
+  assert.equal(classQuery(`?page=room-checkin&token=${token}&person_name=private`), `?page=room-checkin&token=${token}`);
+  for (const query of [`?page=room-checkin&token=${token}&token=${token}`, '?page=room-checkin&token=bad', `?page=room-checkin&page=student-checkin&token=${token}`]) assert.throws(() => classQuery(query));
+  for (const name of ['old-room', 'new-room']) {
+    let count=0;
+    const result=await checkConnection({search:`?page=room-checkin&token=${token}`,fetcher:async()=>response(++count===1?{...runtime,origin:`https://${name}.trycloudflare.com`}:{status:'ok',service:'lums',gatewayId:token})});
+    assert.equal(result.destination,`https://${name}.trycloudflare.com/?page=room-checkin&token=${token}`);
+  }
+});
+
 test('offline and online runtime validation', () => {
   assert.deepEqual(validateRuntime(runtime), { status: 'online', origin: runtime.origin, gatewayId: token });
   assert.deepEqual(validateRuntime({ schemaVersion: 1, status: 'offline' }), { status: 'offline' });

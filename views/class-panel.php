@@ -9,6 +9,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
 ?>
 <div class="class-panel-content" data-panel-class="<?= $panelClass['id'] ?>" data-course-code="<?= e($panelClass['course_code']) ?>">
     <div class="class-panel-meta">
+        <p class="inline-note">นักศึกษาสแกน QR หน้าห้อง แล้วเลือกคลาสนี้ได้ <a class="text-link" href="?page=rooms&amp;qr_room=<?= $panelClass['room_id'] ?>">เปิด QR ประจำห้อง / พิมพ์ป้าย</a></p>
         <h3><?= e($panelClass['course_code'].' · '.$panelClass['course_name']) ?></h3>
         <p><?= e($panelClass['room_code'].' — '.$panelClass['room_name']) ?></p>
         <p><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
@@ -34,6 +35,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
     <p><a class="button button--secondary" href="?page=classes&edit_class=<?= $panelClass['id'] ?>">แก้ไข / ยกเลิกคลาสเรียน</a></p>
     <div class="class-panel-columns">
         <section class="class-qr-section" aria-label="QR สำหรับคลาส">
+            <p class="helper-text">QR เฉพาะคลาสเดิม · ใช้ส่งลิงก์ตรงได้ หากติดหน้าห้องให้ใช้ QR ประจำห้องด้านบน</p>
             <div class="class-qr-poster" data-qr-poster>
                 <p class="qr-print-label">LUMS · สแกนเพื่อลงชื่อเข้าเรียน</p>
                 <h3 data-poster-course><?= e($panelClass['course_code'].' · '.$panelClass['course_name']) ?></h3>

@@ -45,7 +45,7 @@ $onceRooms=array_values(array_filter(list_rooms(),static fn($r)=>$r['status']===
             <div class="class-pending-range"><span data-pending-range>เลือกห้อง แล้วคลิกช่วงเวลาในตาราง</span><button type="button" class="button button--secondary" data-add-range disabled>เพิ่มช่วงที่เลือก</button></div>
             <div class="section-heading"><h3>ช่วงเวลาที่เลือก <span data-slot-count>0</span></h3><span class="helper-text">แก้เวลาและห้องในแต่ละแถวได้</span></div>
             <div class="class-slot-list" data-class-slots></div>
-            <p class="helper-text">เปิดรับลงชื่ออัตโนมัติก่อนเวลาเรียน 10 นาที ปิดเมื่อสิ้นสุดเวลาเรียน หรือเจ้าของคลาสกดปิดก่อน · QR แยกทุกคลาส</p>
+            <p class="helper-text">สแกน QR ประจำห้องเพื่อลงชื่อ · เปิดรับก่อนเวลาเรียน 10 นาที ปิดเมื่อสิ้นสุดเวลาเรียน หรือเจ้าของคลาสกดปิดก่อน</p>
             <label class="field"><span>หมายเหตุ (ไม่บังคับ)</span><textarea name="notes" rows="2" maxlength="500"><?= e($onceValues['notes']) ?></textarea></label>
             <noscript><p class="alert alert--error">กรุณาเปิด JavaScript เพื่อเลือกช่วงเวลาและตรวจสอบตารางก่อนบันทึก</p></noscript>
         </div>

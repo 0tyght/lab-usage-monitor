@@ -11,10 +11,10 @@ export function validateRuntime(value) {
 export function classQuery(search) {
   const input = new URLSearchParams(search);
   if (!input.has('page') && !input.has('token')) return '';
-  if (input.getAll('page').length !== 1 || input.get('page') !== 'student-checkin'
+  if (input.getAll('page').length !== 1 || !['student-checkin','room-checkin'].includes(input.get('page'))
       || input.getAll('token').length !== 1 || !/^[a-f0-9]{32}$/.test(input.get('token') || '')) throw new Error('link');
   // Never forward redirect destinations, health parameters, or unrelated input.
-  return '?' + new URLSearchParams({ page: 'student-checkin', token: input.get('token') });
+  return '?' + new URLSearchParams({ page: input.get('page'), token: input.get('token') });
 }
 
 export async function checkConnection({ search = '', fetcher = fetch, signal } = {}) {

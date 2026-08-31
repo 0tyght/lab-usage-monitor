@@ -10,7 +10,7 @@ const isStudent = new URLSearchParams(location.search).has('token');
 if (isStudent) {
   document.querySelector('#context').textContent = 'ลงชื่อเข้าใช้ห้องปฏิบัติการ';
   document.querySelector('#operator-help').hidden = true;
-  document.querySelector('#help-detail').textContent = 'แจ้งอาจารย์ประจำคลาสให้ตรวจสอบเซิร์ฟเวอร์ แล้วลองอีกครั้งด้วย QR เดิม ไม่ต้องกรอกข้อมูลใหม่ที่หน้านี้';
+  document.querySelector('#help-detail').textContent = 'แจ้งผู้ดูแลห้องให้ตรวจสอบเซิร์ฟเวอร์ แล้วลองอีกครั้งด้วย QR เดิม ไม่ต้องกรอกข้อมูลใหม่ที่หน้านี้';
 }
 
 const states = {
@@ -18,7 +18,7 @@ const states = {
   unconfigured: ['ยังไม่ได้เปิดระบบออนไลน์', 'ลิงก์เข้าระบบพร้อมแล้ว รอผู้ดูแลเปิดเซิร์ฟเวอร์ครั้งแรก'],
   network: ['ตรวจสอบการเชื่อมต่อไม่ได้', 'กรุณาตรวจสอบอินเทอร์เน็ตของคุณ แล้วกดตรวจสอบอีกครั้ง'],
   config: ['ข้อมูลการเชื่อมต่อไม่ถูกต้อง', 'ระบบหยุดการเชื่อมต่อเพื่อความปลอดภัย กรุณาแจ้งผู้ดูแลให้เปิดระบบใหม่'],
-  link: ['ลิงก์คลาสเรียนไม่ถูกต้อง', 'กรุณาสแกน QR ของคลาสอีกครั้ง หรือขอลิงก์ใหม่จากอาจารย์'],
+  link: ['ลิงก์ลงชื่อไม่ถูกต้อง', 'กรุณาสแกน QR หน้าห้องอีกครั้ง หรือขอลิงก์จากผู้ดูแลห้อง'],
 };
 const normalHelp = document.querySelector('#help-detail').textContent;
 
@@ -38,7 +38,7 @@ async function connect() {
     if (result.status === 'ready') {
       status.dataset.state = 'ready';
       title.textContent = 'เชื่อมต่อสำเร็จ';
-      detail.textContent = isStudent ? 'กำลังเปิดหน้าลงชื่อของคลาสเรียน' : 'กำลังเปิดหน้าเข้าสู่ระบบ LUMS';
+      detail.textContent = isStudent ? 'กำลังเปิดหน้าลงชื่อเข้าใช้ห้อง' : 'กำลังเปิดหน้าเข้าสู่ระบบ LUMS';
       next.textContent = isStudent ? 'เปิดหน้าลงชื่อ' : 'เข้าสู่ระบบ';
       next.href = result.destination;
       next.hidden = false;
@@ -52,7 +52,7 @@ async function connect() {
     [title.textContent, detail.textContent] = states[error.message] || states.network;
     if (error.message === 'link') {
       document.querySelector('.actions').hidden = true;
-      document.querySelector('#help-detail').textContent = 'ลิงก์นี้มีรหัสคลาสไม่ครบหรือรูปแบบไม่ถูกต้อง การโหลดซ้ำจะไม่แก้ปัญหา กรุณาขอ QR ที่ถูกต้องจากอาจารย์';
+      document.querySelector('#help-detail').textContent = 'ลิงก์นี้มีรหัสห้องหรือคลาสไม่ครบ หรือรูปแบบไม่ถูกต้อง กรุณาขอ QR ที่ถูกต้องจากผู้ดูแล';
     }
   } finally {
     clearTimeout(timeout);

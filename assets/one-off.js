@@ -32,7 +32,7 @@
       });
     }else if(slots.length){const dates=slots.map(s=>s.class_date).sort();first=dates[0];last=dates.at(-1);}
     q('[data-class-summary]').textContent=slots.length
-      ? slots.length+' ช่วงเวลา · '+count+' คลาส พร้อม QR แยกแต่ละครั้ง'+(first?' · '+formatDate(first)+(last!==first?' – '+formatDate(last):''):'')
+      ? slots.length+' ช่วงเวลา · '+count+' คลาส ใช้ QR ประจำห้อง'+(first?' · '+formatDate(first)+(last!==first?' – '+formatDate(last):''):'')
       : 'ยังไม่ได้เลือกช่วงเวลา';
   }
   function renderGrid(){

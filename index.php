@@ -261,6 +261,17 @@ if (($_GET['download'] ?? '') === 'report-csv') {
     exit;
 }
 
+if (($_GET['download'] ?? '') === 'room-visits-csv') {
+    require_auth('admin');
+    $visitReport=room_visit_report($_GET);
+    if ($visitReport['errors']) { http_response_code(422); echo e(implode(' ',$visitReport['errors'])); exit; }
+    $visitTable=room_visit_table($visitReport); $vf=$visitReport['filters'];
+    header('Content-Type: text/csv; charset=UTF-8'); header('Cache-Control: no-store'); header('Content-Disposition: attachment; filename="lums-room-visits-'.$vf['date_from'].'-'.$vf['date_to'].'.csv"');
+    echo "\xEF\xBB\xBF"; $out=fopen('php://output','wb');
+    $metadata=[['รายงานเข้าใช้นอกคลาส LUMS'],['ช่วงวันที่เข้า',$vf['date_from'],$vf['date_to']],['ช่วงเวลาเข้า (UTC+7)',$vf['time_from'],$vf['time_to']],['ห้อง ID',$vf['room_id'] ?: 'ทุกห้อง'],['สถานะ',$vf['visit_status'] ?: 'ทุกสถานะ'],['คำค้น',$vf['q']],['หน่วย',$vf['unit'],'นาทีต่อคาบ',$vf['period_minutes']],['เรียงลำดับ',$vf['sort']],['หมายเหตุ','ระยะเวลารายบุคคลจากเวลาที่ผู้ใช้กดเข้า–ออก ไม่ใช่ชั่วโมงครองห้อง; รายการค้างหรือผู้ดูแลปิดไม่คำนวณระยะเวลา'],[]];
+    foreach (array_merge($metadata,[$visitTable['headers']],$visitTable['rows']) as $row) fputcsv($out,array_map('csv_safe_value',$row)); fclose($out); exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = (string) ($_POST['action'] ?? '');
@@ -292,7 +303,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect_to('student-checkin', ['token' => $token]);
     }
 
+    if (in_array($action,['room_visit_start','room_visit_end'],true)) {
+        $token=(string)($_POST['token'] ?? '');
+        $holder=$_SESSION['room_visit_holders'][$token] ?? null;
+        if ($action==='room_visit_start') {
+            $result=$holder && hash_equals($holder['request'],(string)($_POST['client_request_id'] ?? '')) ? record_room_visit($token,$_POST,$holder['receipt']) : visit_error('แบบฟอร์มหมดอายุ กรุณาเปิดหน้าห้องอีกครั้ง');
+            if ($result['ok']) { $_SESSION['room_visit_holders'][$token]['visit_id']=$result['id']; remember_room_visit($token,$holder['receipt']); }
+        } else $result=$holder ? checkout_room_visit($holder['receipt']) : visit_error('ไม่พบรายการของเบราว์เซอร์นี้');
+        set_flash($result['ok']?'success':'error',$result['ok']?($action==='room_visit_start'?'บันทึกการเข้าใช้แล้ว':'บันทึกเวลาออกแล้ว'):'ยังบันทึกไม่ได้',$result['message'] ?? '');
+        if (!$result['ok']) $_SESSION['room_visit_input']=array_intersect_key($_POST,array_flip(['person_code','person_name','person_role','purpose']));
+        redirect_to('room-checkin',['token'=>$token]);
+    }
+
     require_auth(['admin', 'lecturer']);
+
+    if ($action==='room_visit_admin_end') {
+        require_auth('admin');
+        $result=checkout_room_visit('',(int)($_POST['visit_id'] ?? 0),(string)($_POST['checkout_note'] ?? ''));
+        set_flash($result['ok']?'success':'error',$result['ok']?'ปิดรายการแล้ว':'ปิดรายการไม่สำเร็จ',$result['message'] ?? 'บันทึกว่าเป็นการปิดโดยผู้ดูแล ไม่แทนเวลาออกที่ผู้ใช้ยืนยัน');
+        redirect_to('reports',['tab'=>'walkins']+room_visit_report_query($_GET));
+    }
 
     if ($action === 'logout') {
         logout_user();
@@ -306,7 +336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = $known === 0 ? create_class_batch($_POST) : class_batch_error('แบบฟอร์มหมดอายุ กรุณาเปิดหน้าต่างสร้างคลาสเรียนใหม่');
         if ($result['ok']) {
             $_SESSION['one_off_requests'][$requestId] = $result;
-            set_flash('success','สร้างคลาสเรียนแล้ว','บันทึก '.$result['count'].' คลาส พร้อม QR แยกแต่ละครั้ง เปิดรับอัตโนมัติก่อนเรียน 10 นาที');
+            set_flash('success','สร้างคลาสเรียนแล้ว','บันทึก '.$result['count'].' คลาส ใช้ QR ประจำห้องลงชื่อได้ เปิดรับอัตโนมัติก่อนเรียน 10 นาที');
             redirect_to('classes',['series'=>$result['series_key'],'range'=>'all']);
         }
         $_SESSION['one_off_errors']=$result['errors'];
@@ -440,14 +470,14 @@ if ($page === 'login' && $user) {
     redirect_to('dashboard');
 }
 
-if (!in_array($page, ['login', 'student-checkin'], true)) {
+if (!in_array($page, ['login', 'student-checkin','room-checkin'], true)) {
     require_auth(['admin', 'lecturer']);
     $user = current_user();
 }
 
 // Keep old bookmarked class links working without a separate QR/detail page.
 if ($page === 'class-detail') redirect_to('classes',['class_id'=>(int)($_GET['id'] ?? 0)]);
-$allowedPages = ['login', 'student-checkin', 'dashboard', 'schedule', 'calendar', 'classes', 'records', 'rooms', 'reports'];
+$allowedPages = ['login', 'student-checkin','room-checkin', 'dashboard', 'schedule', 'calendar', 'classes', 'records', 'rooms', 'reports'];
 if (!in_array($page, $allowedPages, true)) {
     http_response_code(404);
     $page = 'not-found';
@@ -457,6 +487,8 @@ $flash = pull_flash();
 $formErrors = $_SESSION['form_errors'] ?? [];
 $oldInput = $_SESSION['old_input'] ?? [];
 unset($_SESSION['form_errors'], $_SESSION['old_input']);
+
+if ($page === 'room-checkin') { require __DIR__.'/views/room-checkin.php'; exit; }
 
 if ($page === 'student-checkin'):
     $token = trim((string) ($_GET['token'] ?? ''));
@@ -546,7 +578,7 @@ if ($page === 'login'):
             <div>
                 <p class="eyebrow">Laboratory Usage Monitoring System</p>
                 <h1 id="brand-title">จัดการการใช้ห้องปฏิบัติการ<br>ให้ตรวจสอบได้ในที่เดียว</h1>
-                <p class="auth-intro">สร้างคลาสเรียนและ QR Code ติดตามการลงชื่อเข้าเรียน และเรียกดูข้อมูลเพื่อวางแผนได้อย่างแม่นยำ</p>
+                <p class="auth-intro">จัดตารางเรียน ติด QR ประจำห้อง ติดตามการลงชื่อทั้งในคลาสและนอกคลาส และเรียกดูรายงานการใช้ห้อง</p>
             </div>
             <dl class="auth-features">
                 <div><dt>รวดเร็ว</dt><dd>เช็กอินและยืนยันผลได้ทันที</dd></div>
@@ -559,7 +591,7 @@ if ($page === 'login'):
                 <div class="mobile-brand"><span class="brand-mark">LU</span><strong>LUMS</strong></div>
                 <p class="eyebrow">ยินดีต้อนรับ</p>
                 <h2 id="login-title">เข้าสู่ระบบ</h2>
-                <p class="muted">สำหรับอาจารย์และผู้ดูแลระบบเท่านั้น นักศึกษาเข้าใช้งานผ่าน QR Code ของคลาส</p>
+                <p class="muted">สำหรับอาจารย์และผู้ดูแลระบบเท่านั้น นักศึกษาลงชื่อผ่าน QR Code หน้าห้อง</p>
 
                 <?php if ($flash): ?>
                     <div class="alert alert--<?= e($flash['type']) ?>" role="alert">
@@ -621,6 +653,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
     <link rel="stylesheet" href="<?= e(asset_url('planning.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url('class-panel.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url('class-batch.css')) ?>">
+    <link rel="stylesheet" href="<?= e(asset_url('room-qr.css')) ?>">
     <?php if ($page === 'schedule'): ?><link rel="stylesheet" href="<?= e(asset_url('timetable.css')) ?>"><?php endif; ?>
 </head>
 <body class="app-page">
@@ -711,6 +744,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 
 
                 <?php elseif ($page === 'records'): ?>
+                    <?php if ($user['role']==='admin'): ?><p><a class="button button--secondary" href="?page=reports&amp;tab=walkins">ดูการเข้าใช้นอกคลาส</a></p><?php endif; ?>
                     <?php $filters = ['q'=>(string)($_GET['q']??''),'room_id'=>(string)($_GET['room_id']??''),'date_from'=>(string)($_GET['date_from']??''),'date_to'=>(string)($_GET['date_to']??'')]; $result = list_attendance_records($filters); $rooms = list_rooms(); ?>
                     <header class="page-header"><div><p class="eyebrow">ข้อมูลการเข้าเรียน</p><h1>ประวัติการเข้าเรียน</h1><p>ค้นหานักศึกษา รายวิชา ห้อง และเวลาที่ลงชื่อผ่าน QR Code</p></div><a class="button button--primary" href="?page=classes&amp;new_once=1">สร้างคลาสเรียน</a></header>
                     <form method="get" class="filter-bar">
@@ -729,11 +763,11 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 
                 <?php elseif ($page === 'rooms'): ?>
                     <?php $rooms = list_rooms(); ?>
-                    <header class="page-header"><div><p class="eyebrow">ทรัพยากร</p><h1>ห้องปฏิบัติการ</h1><p>ตรวจสอบรหัสห้อง ตำแหน่ง และสถานะการใช้งานปัจจุบัน</p></div></header>
-                    <section class="section-block"><div class="section-heading"><div><h2>รายการห้อง</h2><p>ทั้งหมด <?= count($rooms) ?> ห้อง</p></div></div><div class="rooms-grid"><?php foreach ($rooms as $room): ?><article class="room-card"><div class="room-card-header"><span class="room-code"><?= e($room['code']) ?></span><span class="status status--<?= e($room['live_status']) ?>"><span></span><?= e(status_label($room['live_status'])) ?></span></div><h2><?= e($room['name']) ?></h2><p><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?></p><dl><div><dt>ความจุ</dt><dd><?= e($room['capacity']) ?> คน</dd></div><div><dt>สถานะระบบ</dt><dd><?= e(match($room['live_status']) { 'active'=>'มีคลาสกำลังใช้งาน', 'maintenance'=>'งดจัดคลาสชั่วคราว', default=>'พร้อมจัดคลาส' }) ?></dd></div></dl><?php if($room['status']==='available'): ?><a class="text-link" href="?page=classes&amp;room_id=<?= e($room['id']) ?>&amp;new_once=1">สร้างคลาสเรียน</a><?php else: ?><span class="muted">ยังไม่สามารถสร้างคลาสในห้องนี้</span><?php endif; ?></article><?php endforeach; ?></div></section>
+                    <?php require __DIR__.'/views/rooms.php'; ?>
 
                 <?php elseif ($page === 'reports'): ?>
-                    <?php require __DIR__ . '/views/reports.php'; ?>
+                    <?php if ($user['role']==='admin'): ?><nav class="report-tabs" aria-label="ประเภทรายงาน"><a class="button button--<?= ($_GET['tab'] ?? '')==='walkins'?'secondary':'primary' ?>" href="?page=reports">ตารางและคลาสเรียน</a><a class="button button--<?= ($_GET['tab'] ?? '')==='walkins'?'primary':'secondary' ?>" href="?page=reports&amp;tab=walkins">การเข้าใช้นอกคลาส</a></nav><?php endif; ?>
+                    <?php require __DIR__ . (($_GET['tab'] ?? '')==='walkins'?'/views/room-visit-report.php':'/views/reports.php'); ?>
 
                 <?php else: ?>
                     <section class="empty-feature"><span data-icon="circle-alert"></span><h1>ไม่พบหน้าที่ต้องการ</h1><p>ลิงก์อาจไม่ถูกต้องหรือหน้านี้ถูกย้ายแล้ว</p><a class="button button--primary" href="?page=dashboard">กลับหน้าภาพรวม</a></section>
@@ -751,6 +785,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
     <script src="<?= e(asset_url('one-off.js')) ?>" defer></script>
     <script src="<?= e(asset_url('class-panel.js')) ?>" defer></script>
     <script src="<?= e(asset_url('class-change.js')) ?>" defer></script>
+    <script src="<?= e(asset_url('room-qr.js')) ?>" defer></script>
 </body>
 </html>
 
@@ -760,7 +795,7 @@ function render_class_table(array $items, bool $filtered = false): void
     if (!$items) {
         echo $filtered
             ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบคลาสที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้นหรือสถานะ เพื่อดูคลาสที่ต้องการ</span><a class="button button--secondary" href="?page=classes">ล้างตัวกรอง</a></div>'
-            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสเรียนเพื่อรับ QR Code สำหรับนักศึกษา</span><a class="button button--secondary" href="?page=classes&amp;new_once=1">สร้างคลาสเรียน</a></div>';
+            : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีคลาสเรียน</strong><span>สร้างคลาสเรียนเพื่อให้นักศึกษาสแกน QR หน้าห้องแล้วเลือกลงชื่อได้</span><a class="button button--secondary" href="?page=classes&amp;new_once=1">สร้างคลาสเรียน</a></div>';
         return;
     }
 ?>

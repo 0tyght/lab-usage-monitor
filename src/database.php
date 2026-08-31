@@ -209,6 +209,25 @@ CREATE TABLE IF NOT EXISTS usage_records (
     FOREIGN KEY (user_id) REFERENCES users(id) ON UPDATE CASCADE ON DELETE RESTRICT
 );
 
+CREATE TABLE IF NOT EXISTS room_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    room_id INTEGER NOT NULL REFERENCES rooms(id) ON DELETE RESTRICT,
+    person_code TEXT NOT NULL,
+    person_name TEXT NOT NULL,
+    person_role TEXT NOT NULL CHECK (person_role IN ('student','lecturer','staff')),
+    purpose TEXT NOT NULL,
+    check_in_at TEXT NOT NULL,
+    check_out_at TEXT NULL,
+    checkout_method TEXT NULL CHECK (checkout_method IN ('self','admin')),
+    checkout_note TEXT NULL,
+    closed_by INTEGER NULL REFERENCES users(id) ON DELETE RESTRICT,
+    receipt_hash TEXT NOT NULL UNIQUE,
+    client_request_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_room_visit_active_person ON room_visits(person_code) WHERE check_out_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_room_visit_room_time ON room_visits(room_id,check_in_at);
+
 CREATE TABLE IF NOT EXISTS login_attempts (
     attempt_key TEXT PRIMARY KEY,
     attempts INTEGER NOT NULL DEFAULT 0,
