@@ -1,5 +1,6 @@
-/storage/*.sqlite
-/storage/*.sqlite-shm
-/storage/*.sqlite-wal
-/storage/sessions/
-/.env
+/storage/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+.env*
+!.env*.example

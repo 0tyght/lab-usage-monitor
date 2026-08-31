@@ -64,12 +64,18 @@ The `main` branch is the deployment source of truth. GitHub Actions builds the D
 
 ### Render preview
 
+ขั้นตอนภาษาไทย: [เปิดออนไลน์ด้วย Render](docs/deploy-render.md). บริการนี้ต้องใช้ compute และ persistent disk แบบเสียเงิน; ตรวจยอดใน Render ก่อนยืนยันสร้างบริการ
+
 `render.yaml` defines a Docker web service with a persistent disk mounted at `/var/www/html/storage`. Connect the repository as a Render Blueprint and provide these secret values in the Render dashboard:
 
 - `LUMS_ADMIN_EMAIL`
 - `LUMS_ADMIN_PASSWORD` — at least 12 characters
 
 Render receives `APP_URL` from `RENDER_EXTERNAL_URL`. Demo accounts and demo records are not created when `APP_ENV=production`.
+
+Docker exposes only `/var/www/html/public` (the PHP entry point and copied static assets). Database, sessions, source code, deployment configuration, and scripts remain outside the HTTP document root. CI checks HTTP health, static assets, and private-file isolation before publishing an image. `.env*`, local databases, and sessions are excluded from the Docker build context; only environment examples may be committed to Git.
+
+The XAMPP / PHP built-in server instructions above are for local development only. Do not expose that development server through port forwarding or a public tunnel; use the hardened Docker configuration for online deployment.
 
 ### University server or VPS
 

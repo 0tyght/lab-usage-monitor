@@ -4,7 +4,8 @@ services:
     runtime: docker
     repo: https://github.com/0tyght/lab-usage-monitor
     branch: main
-    plan: starter
+    # Paid compute is required for the persistent SQLite disk. Review cost before deploying.
+    plan: 0.5c-512mb
     region: singapore
     autoDeployTrigger: checksPass
     healthCheckPath: /?health=1

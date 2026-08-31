@@ -9,9 +9,11 @@ RUN docker-php-ext-install pdo_mysql
 WORKDIR /var/www/html
 
 COPY . /var/www/html
+COPY assets /var/www/html/public/assets
 COPY docker/entrypoint.sh /usr/local/bin/lums-entrypoint
 COPY docker/php.ini /usr/local/etc/php/conf.d/lums.ini
 COPY docker/servername.conf /etc/apache2/conf-available/lums-servername.conf
+COPY docker/site.conf /etc/apache2/sites-available/000-default.conf
 
 RUN chmod +x /usr/local/bin/lums-entrypoint \
     && mkdir -p /var/www/html/storage/sessions \

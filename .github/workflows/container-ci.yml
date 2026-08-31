@@ -38,6 +38,18 @@ jobs:
       - name: Test UX status filters and lecturer scope
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/ux-regression.php
 
+      - name: Verify HTTP serving and private file isolation
+        run: |
+          docker run --rm --entrypoint apache2ctl lums-ci:${{ github.sha }} -t
+          docker run -d --name lums-http-check \
+            -e APP_ENV=production \
+            -e APP_DEBUG=false \
+            -e LUMS_ADMIN_EMAIL=admin@example.invalid \
+            -e LUMS_ADMIN_PASSWORD=CiOnlyPassword-2569 \
+            lums-ci:${{ github.sha }}
+          trap 'docker logs lums-http-check; docker rm -f lums-http-check' EXIT
+          docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/http-smoke.php
+
       - name: Log in to GitHub Container Registry
         if: github.event_name == 'push'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
