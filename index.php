@@ -106,7 +106,7 @@ function thai_day_label(int $day, bool $short = false): string
 function week_start_date(?string $value = null): DateTimeImmutable
 {
     $timezone = new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok'));
-    $date = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$value)
+    $date = valid_iso_date((string)$value)
         ? new DateTimeImmutable((string)$value, $timezone)
         : new DateTimeImmutable('today', $timezone);
     return $date->modify('monday this week');
@@ -140,6 +140,33 @@ if (($_GET['api'] ?? '') === 'one-off-availability') {
     } catch (Throwable) {
         http_response_code(422);
         echo json_encode(['ok'=>false,'message'=>'ตรวจเวลาไม่สำเร็จ กรุณาตรวจวันที่ ห้อง และผู้สอน แล้วลองอีกครั้ง'], JSON_UNESCAPED_UNICODE);
+    }
+    exit;
+}
+
+if (($_GET['api'] ?? '') === 'schedule-preview') {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    $viewer = current_user();
+    $previewToken = $_POST['csrf_token'] ?? null;
+    $previewCsrfValid = is_string($previewToken) && is_string($_SESSION['_csrf_token'] ?? null)
+        && (int)($_SESSION['_csrf_issued_at'] ?? 0) >= time() - (int)app_config('security.csrf_ttl',7200)
+        && hash_equals($_SESSION['_csrf_token'], $previewToken);
+    if (!$viewer || !in_array($viewer['role'], ['admin','lecturer'], true)) {
+        http_response_code(401);
+        echo json_encode(['ok'=>false,'message'=>'กรุณาเข้าสู่ระบบอีกครั้ง']);
+    } elseif ($_SERVER['REQUEST_METHOD'] !== 'POST' || !$previewCsrfValid) {
+        http_response_code(403);
+        echo json_encode(['ok'=>false,'message'=>'แบบฟอร์มหมดอายุ กรุณารีเฟรชหน้าแล้วลองใหม่']);
+    } else {
+        try {
+            $preview = validate_schedule_input($_POST);
+            if ($viewer['role']==='lecturer' && isset($preview['errors']['form'])) $preview['errors']['form']='ห้องหรือผู้สอนมีรายการในช่วงนี้แล้ว กรุณาเลือกเวลาอื่น';
+            echo json_encode(['ok'=>$preview['ok'], 'errors'=>$preview['errors'] ?? [], 'message'=>$preview['ok'] ? 'ห้องและผู้สอนไม่ชนกับรายการอื่นในช่วงที่เลือก' : implode(' ', array_values($preview['errors'] ?? []))], JSON_UNESCAPED_UNICODE);
+        } catch (Throwable) {
+            http_response_code(503);
+            echo json_encode(['ok'=>false,'message'=>'ตรวจตารางไม่สำเร็จ กรุณาลองอีกครั้ง']);
+        }
     }
     exit;
 }
@@ -307,20 +334,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($action === 'create_schedule') {
         $result = create_course_schedule($_POST);
+        $scheduleContext = array_intersect_key($_GET, array_flip(['room_id','week','weekend','q']));
         if ($result['ok']) {
             set_flash('success', 'เพิ่มตารางเรียนรายสัปดาห์แล้ว', 'ระบบตรวจสอบห้องและเวลาไม่ให้ชนกันเรียบร้อย');
-            redirect_to('schedule', ['term_id'=>(int)($_POST['term_id'] ?? 0), 'selected'=>(int)$result['id']]);
+            $saved = get_course_schedule((int)$result['id']);
+            $week = week_start_date((string)($scheduleContext['week'] ?? ''));
+            $occurrence = $week->modify('+'.($saved['day_of_week']-1).' days')->format('Y-m-d');
+            if ($occurrence < $saved['active_from'] || $occurrence > $saved['active_until']) {
+                $first = new DateTimeImmutable($saved['active_from']);
+                $first = $first->modify('+'.(($saved['day_of_week']-(int)$first->format('N')+7)%7).' days');
+                $scheduleContext['week'] = week_start_date($first->format('Y-m-d'))->format('Y-m-d');
+            }
+            if ($saved['day_of_week'] > 5) $scheduleContext['weekend'] = 1;
+            if (!empty($scheduleContext['room_id'])) $scheduleContext['room_id'] = $saved['room_id'];
+            if (!empty($scheduleContext['q']) && stripos(implode(' ',[$saved['course_code'],$saved['course_name'],$saved['lecturer_name'],$saved['room_code']]),$scheduleContext['q']) === false) unset($scheduleContext['q']);
+            redirect_to('schedule', ['term_id'=>$saved['term_id'], 'selected'=>(int)$result['id']] + $scheduleContext);
         }
         $_SESSION['form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถเพิ่มตารางเรียนได้'];
         $_SESSION['old_input'] = $_POST;
-        redirect_to('schedule', ['term_id'=>(int)($_POST['term_id'] ?? 0)]);
+        redirect_to('schedule', ['term_id'=>(int)($_POST['term_id'] ?? 0), 'new_schedule'=>1] + $scheduleContext);
     }
 
     if ($action === 'cancel_schedule') {
         $scheduleId = (int)($_POST['schedule_id'] ?? 0);
         $result = cancel_course_schedule($scheduleId);
         set_flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'ยกเลิกตารางเรียนแล้ว' : 'ยกเลิกตารางไม่ได้', $result['message'] ?? '');
-        redirect_to('schedule', ['term_id'=>(int)($_POST['term_id'] ?? 0)]);
+        redirect_to('schedule', ['term_id'=>(int)($_POST['term_id'] ?? 0)] + array_intersect_key($_GET,array_flip(['room_id','week','weekend','q'])));
     }
 
     if ($action === 'import_schedule') {
@@ -328,10 +367,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $result = import_course_schedule_csv($termId, $_FILES['schedule_file'] ?? []);
         if ($result['ok']) {
             set_flash('success', 'นำเข้าตารางเรียนแล้ว', $result['message']);
-            redirect_to('schedule', ['term_id'=>$termId]);
+            redirect_to('schedule', ['term_id'=>$termId] + array_intersect_key($_GET,array_flip(['room_id','week','weekend','q'])));
         }
         $_SESSION['form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถนำเข้าตารางเรียนได้'];
-        redirect_to('schedule', ['term_id'=>$termId, 'import'=>1]);
+        redirect_to('schedule', ['term_id'=>$termId, 'import'=>1] + array_intersect_key($_GET,array_flip(['room_id','week','weekend','q'])));
     }
 
     if ($action === 'create_schedule_session') {
@@ -532,6 +571,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
     <link rel="stylesheet" href="<?= e(asset_url('app.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url('planning.css')) ?>">
     <link rel="stylesheet" href="<?= e(asset_url('class-panel.css')) ?>">
+    <?php if ($page === 'schedule'): ?><link rel="stylesheet" href="<?= e(asset_url('timetable.css')) ?>"><?php endif; ?>
 </head>
 <body class="app-page">
     <a class="skip-link" href="#main-content">ข้ามไปยังเนื้อหา</a>
@@ -558,9 +598,9 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <?php if ($page !== 'schedule' || current_academic_term()): ?><a class="button button--primary button--compact" href="<?= $page === 'schedule' ? '#schedule-form' : '?page=classes&amp;new_once=1' ?>"><span data-icon="plus" aria-hidden="true"></span><?= $page === 'schedule' ? 'เพิ่มตารางเรียนรายสัปดาห์' : 'สร้างคลาสเรียน' ?></a><?php endif; ?>
+                <?php if ($page !== 'schedule'): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
             </header>
-            <main id="main-content" class="content">
+            <main id="main-content" class="content <?= $page === 'schedule' ? 'content--schedule' : '' ?>">
                 <?php if ($flash): ?>
                     <div class="alert alert--<?= e($flash['type']) ?> alert--dismissible" role="status">
                         <span><strong><?= e($flash['title']) ?></strong><?php if ($flash['message']): ?><span><?= e($flash['message']) ?></span><?php endif; ?></span>
@@ -613,134 +653,8 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                 <?php elseif ($page === 'calendar'): ?>
                     <?php require __DIR__ . '/views/calendar.php'; ?>
                 <?php elseif ($page === 'schedule'): ?>
-                    <?php
-                    $terms = list_academic_terms();
-                    $termErrors = $_SESSION['term_form_errors'] ?? [];
-                    $termInput = $_SESSION['term_old_input'] ?? [];
-                    if (!$termInput) $termInput = array_intersect_key($_GET, array_flip(['academic_year', 'semester']));
-                    unset($_SESSION['term_form_errors'], $_SESSION['term_old_input']);
-                    $termContext = array_intersect_key($_GET, array_flip(['term_id', 'room_id', 'week', 'weekend', 'q', 'selected']));
-                    $termReturnUrl = '?' . http_build_query(['page'=>'schedule'] + $termContext);
-                    $termOpenUrl = $termReturnUrl . '&new_term=1#term-settings';
-                    $defaultTerm = current_academic_term();
-                    $termId = (int)($_GET['term_id'] ?? $defaultTerm['id'] ?? 0);
-                    $term = get_academic_term($termId) ?? $defaultTerm;
-                    $termId = (int)($term['id'] ?? 0);
-                    $rooms = list_rooms();
-                    $lecturers = list_lecturers();
-                    $roomFilter = (string)($_GET['room_id'] ?? '');
-                    $weekStart = week_start_date((string)($_GET['week'] ?? ''));
-                    $showWeekend = (string)($_GET['weekend'] ?? '') === '1';
-                    $dayCount = $showWeekend ? 7 : 5;
-                    $schedules = $term ? list_course_schedules($termId, ['room_id'=>$roomFilter, 'q'=>(string)($_GET['q'] ?? '')]) : [];
-                    $selectedSchedule = get_course_schedule((int)($_GET['selected'] ?? 0));
-                    if ($selectedSchedule && $selectedSchedule['term_id'] !== $termId) $selectedSchedule = null;
-                    $selectedDate = $selectedSchedule ? $weekStart->modify('+' . ($selectedSchedule['day_of_week'] - 1) . ' days')->format('Y-m-d') : '';
-                    $previousWeek = $weekStart->modify('-7 days')->format('Y-m-d');
-                    $nextWeek = $weekStart->modify('+7 days')->format('Y-m-d');
-                    $todayWeek = week_start_date()->format('Y-m-d');
-                    $scheduleQueryBase = ['page'=>'schedule','term_id'=>$termId,'room_id'=>$roomFilter,'q'=>(string)($_GET['q'] ?? ''),'weekend'=>$showWeekend ? 1 : 0];
-                    $weekSchedules = array_values(array_filter($schedules, static function (array $schedule) use ($weekStart, $dayCount): bool {
-                        $date = $weekStart->modify('+' . ($schedule['day_of_week'] - 1) . ' days')->format('Y-m-d');
-                        return $schedule['day_of_week'] <= $dayCount && $date >= $schedule['active_from'] && $date <= $schedule['active_until'];
-                    }));
-                    ?>
-                    <header class="page-header"><div><p class="eyebrow">ตารางทั้งภาคและคลาสเรียนแบบครั้งเดียว</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>จัดตารางซ้ำรายสัปดาห์ หรือสร้างคลาสเรียนเฉพาะวันโดยไม่ต้องมีภาคการศึกษา</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>สร้างคลาสเรียน</a><?php if ($user['role']==='admin'): ?><?php if ($term): ?><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a><?php endif; ?><a class="button button--secondary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษา</a><?php endif; ?></div></header>
-                    <?php if ($term): ?><nav class="academic-year-slots" aria-label="3 ภาคในปีการศึกษาที่เลือก">
-                        <?php foreach (semester_labels() as $semesterKey=>$semesterText): $slotTerm = null; foreach ($terms as $candidate) if ($candidate['academic_year'] === $term['academic_year'] && (string)$candidate['semester'] === (string)$semesterKey) $slotTerm = $candidate; ?>
-                            <?php if ($slotTerm): ?><a href="?page=schedule&amp;term_id=<?= $slotTerm['id'] ?>" <?= $slotTerm['id']===$termId?'aria-current="page"':'' ?>><strong><?= e($slotTerm['name']) ?></strong><small><?= e($semesterText) ?> · เพิ่มแล้ว</small></a><?php elseif ($user['role']==='admin' && isset(nu_academic_presets()[$term['academic_year']]['terms'][$semesterKey])): ?><a href="?<?= e(http_build_query(['page'=>'schedule', 'new_term'=>1, 'academic_year'=>$term['academic_year'], 'semester'=>$semesterKey])) ?>"><strong><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?></strong><small><?= e($semesterText) ?> · เพิ่มภาคการศึกษา</small></a><?php else: ?><span><?= e(academic_term_code($term['academic_year'], (string)$semesterKey)) ?> · ยังไม่มีภาคนี้</span><?php endif; ?>
-                        <?php endforeach; ?>
-                    </nav><?php endif; ?>
-                    <?php if (!$term): ?>
-                        <section class="empty-feature"><span data-icon="calendar-days"></span><h2>ยังไม่มีภาคการศึกษา</h2><p>ผู้ดูแลระบบต้องสร้างภาคการศึกษาก่อนเริ่มจัดตารางเรียน</p><?php if ($user['role']==='admin'): ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษาแรก</a><?php endif; ?></section>
-                    <?php else: ?>
-                        <form method="get" class="filter-bar schedule-filter">
-                            <input type="hidden" name="page" value="schedule">
-                            <label><span>ภาคการศึกษา</span><select name="term_id"><?php foreach($terms as $item): ?><option value="<?= e($item['id']) ?>" <?= $item['id']===$termId?'selected':'' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
-                            <label><span>ห้อง</span><select name="room_id"><option value="">ทุกห้อง</option><?php foreach($rooms as $room): ?><option value="<?= e($room['id']) ?>" <?= $roomFilter===(string)$room['id']?'selected':'' ?>><?= e($room['code']) ?></option><?php endforeach; ?></select></label>
-                            <label class="search-field"><span data-icon="search"></span><span class="sr-only">ค้นหาตาราง</span><input name="q" value="<?= e($_GET['q'] ?? '') ?>" placeholder="ค้นหารายวิชา ห้อง หรืออาจารย์"></label>
-                            <input type="hidden" name="week" value="<?= e($weekStart->format('Y-m-d')) ?>">
-                            <input type="hidden" name="weekend" value="<?= $showWeekend ? '1' : '0' ?>">
-                            <button class="button button--secondary" type="submit">แสดงตาราง</button>
-                        </form>
-                        <div class="schedule-toolbar" aria-label="เปลี่ยนสัปดาห์">
-                            <div class="button-group"><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$previousWeek])) ?>" aria-label="สัปดาห์ก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$todayWeek])) ?>">สัปดาห์นี้</a><a class="button button--secondary button--small" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$nextWeek])) ?>" aria-label="สัปดาห์ถัดไป"><span data-icon="chevron-right"></span></a></div>
-                            <div><strong><?= e($weekStart->format('d/m/Y')) ?> – <?= e($weekStart->modify('+' . ($dayCount - 1) . ' days')->format('d/m/Y')) ?></strong><small><?= e($term['name']) ?></small></div>
-                            <div class="segmented" aria-label="จำนวนวันที่แสดง"><a class="<?= !$showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query(array_merge($scheduleQueryBase, ['week'=>$weekStart->format('Y-m-d'),'weekend'=>0]))) ?>" <?= !$showWeekend ? 'aria-current="page"' : '' ?>>จ.–ศ.</a><a class="<?= $showWeekend?'is-active':'' ?>" href="?<?= e(http_build_query(array_merge($scheduleQueryBase, ['week'=>$weekStart->format('Y-m-d'),'weekend'=>1]))) ?>" <?= $showWeekend ? 'aria-current="page"' : '' ?>>7 วัน</a></div>
-                        </div>
-                        <div class="schedule-layout">
-                            <section class="schedule-calendar-panel" aria-labelledby="weekly-calendar-title">
-                                <div class="section-heading"><div><h2 id="weekly-calendar-title">ตารางประจำสัปดาห์</h2><p>คลิกช่องแรก แล้วคลิกช่องสุดท้ายในวันเดียวกัน เพื่อเลือกหลายชั่วโมงต่อเนื่อง</p></div><span class="result-count"><?= count($weekSchedules) ?> รายการในสัปดาห์นี้</span></div>
-                                <?php if (!$weekSchedules): ?><p class="inline-note">ไม่พบตารางในสัปดาห์และตัวกรองที่เลือก ลองเปลี่ยนสัปดาห์หรือปรับตัวกรอง</p><?php endif; ?>
-                                <div class="schedule-legend"><span><i class="legend-swatch legend-swatch--class"></i>มีตารางเรียน</span><span><i class="legend-swatch legend-swatch--selected"></i>รายการที่เลือก</span><span><i class="legend-swatch legend-swatch--today"></i>วันนี้</span></div>
-                                <div class="schedule-scroll" role="region" aria-label="ตารางเรียนรายสัปดาห์" tabindex="0">
-                                    <div class="schedule-week" style="--day-count:<?= e($dayCount) ?>">
-                                        <div class="schedule-corner">เวลา</div>
-                                        <?php for($day=1;$day<=$dayCount;$day++): $date=$weekStart->modify('+' . ($day-1) . ' days'); ?>
-                                            <div class="schedule-day-heading <?= $date->format('Y-m-d')===date('Y-m-d')?'is-today':'' ?>"><strong><?= e(thai_day_label($day, true)) ?></strong><span><?= e($date->format('d/m')) ?></span></div>
-                                        <?php endfor; ?>
-                                        <div class="schedule-time-rail"><?php for($hour=8;$hour<=20;$hour++): ?><span style="--hour-index:<?= e($hour-8) ?>"><?= e(sprintf('%02d:00',$hour)) ?></span><?php endfor; ?></div>
-                                        <?php for($day=1;$day<=$dayCount;$day++): $date=$weekStart->modify('+' . ($day-1) . ' days'); $dateValue=$date->format('Y-m-d'); ?>
-                                            <div class="schedule-day-column <?= $dateValue===date('Y-m-d')?'is-today':'' ?>" data-schedule-day="<?= e($day) ?>" data-schedule-date="<?= e($dateValue) ?>">
-                                                <?php for($hour=8;$hour<20;$hour++): ?><button type="button" class="schedule-empty-slot" data-slot-day="<?= e($day) ?>" data-slot-start="<?= e(sprintf('%02d:00',$hour)) ?>" aria-label="เลือก<?= e(thai_day_label($day)) ?> เวลา <?= e(sprintf('%02d:00',$hour)) ?>"></button><?php endfor; ?>
-                                                <?php foreach($schedules as $schedule): if($schedule['day_of_week']!==$day || $dateValue<$schedule['active_from'] || $dateValue>$schedule['active_until']) continue; [$sh,$sm]=array_map('intval',explode(':',$schedule['starts_time'])); [$eh,$em]=array_map('intval',explode(':',$schedule['ends_time'])); $startMinute=max(0,$sh*60+$sm-480); $duration=max(30,$eh*60+$em-($sh*60+$sm)); ?>
-                                                    <a class="schedule-block <?= $selectedSchedule && $selectedSchedule['id']===$schedule['id']?'is-selected':'' ?>" style="--slot-start:<?= e($startMinute) ?>;--slot-duration:<?= e($duration) ?>" href="?<?= e(http_build_query($scheduleQueryBase + ['week'=>$weekStart->format('Y-m-d'),'selected'=>$schedule['id']])) ?>" aria-label="<?= e($schedule['course_code'].' '.$schedule['course_name'].' ห้อง '.$schedule['room_code'].' เวลา '.$schedule['starts_time'].' ถึง '.$schedule['ends_time']) ?>">
-                                                        <strong><?= e($schedule['course_code']) ?></strong><span><?= e($schedule['room_code']) ?></span><small><?= e($schedule['starts_time'].'–'.$schedule['ends_time']) ?></small>
-                                                    </a>
-                                                <?php endforeach; ?>
-                                            </div>
-                                        <?php endfor; ?>
-                                    </div>
-                                </div>
-                            </section>
-                            <aside class="schedule-context" aria-label="รายละเอียดตารางที่เลือก">
-                                <?php if($selectedSchedule): ?>
-                                    <p class="eyebrow">รายการที่เลือก</p><h2><?= e($selectedSchedule['course_code']) ?></h2><p><?= e($selectedSchedule['course_name']) ?><?= $selectedSchedule['section']?' · กลุ่ม '.e($selectedSchedule['section']):'' ?></p>
-                                    <dl class="compact-details"><div><dt>วันและเวลา</dt><dd><?= e(thai_day_label($selectedSchedule['day_of_week']).' '.$selectedSchedule['starts_time'].'–'.$selectedSchedule['ends_time']) ?></dd></div><div><dt>ห้อง</dt><dd><?= e($selectedSchedule['room_code'].' · '.$selectedSchedule['room_name']) ?></dd></div><div><dt>ผู้สอน</dt><dd><?= e($selectedSchedule['lecturer_name']) ?></dd></div><div><dt>ช่วงใช้งาน</dt><dd><?= e($selectedSchedule['active_from'].' – '.$selectedSchedule['active_until']) ?></dd></div></dl>
-                                    <?php if($selectedDate >= $selectedSchedule['active_from'] && $selectedDate <= $selectedSchedule['active_until']): ?><form method="post" class="form-stack schedule-qr-action"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_schedule_session"><input type="hidden" name="schedule_id" value="<?= e($selectedSchedule['id']) ?>"><label class="field"><span>วันที่ต้องการสร้าง QR</span><input type="date" name="scheduled_date" value="<?= e($selectedDate) ?>" min="<?= e($selectedSchedule['active_from']) ?>" max="<?= e($selectedSchedule['active_until']) ?>" required></label><button class="button button--primary button--block" type="submit"><span data-icon="qr-code"></span>เตรียม QR สำหรับคลาสเรียนนี้</button></form><?php else: ?><div class="inline-note">สัปดาห์นี้อยู่นอกช่วงใช้งานของตารางรายการนี้</div><?php endif; ?>
-                                    <form method="post" class="schedule-cancel-action" data-confirm="ตารางรายสัปดาห์นี้จะถูกยกเลิก และ QR แบบร่างของคาบในอนาคตจะถูกยกเลิกด้วย ข้อมูลการเข้าเรียนเดิมจะยังคงอยู่" data-confirm-title="ยกเลิกตารางเรียน" data-confirm-label="ยกเลิกตาราง" data-confirm-danger="true">
-                                        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="cancel_schedule"><input type="hidden" name="schedule_id" value="<?= e($selectedSchedule['id']) ?>"><input type="hidden" name="term_id" value="<?= e($termId) ?>">
-                                        <button class="button button--danger-ghost button--block" type="submit"><span data-icon="calendar-x"></span>ยกเลิกตารางนี้</button>
-                                    </form>
-                                <?php else: ?>
-                                    <div class="schedule-help"><span data-icon="mouse-pointer-click"></span><h2>เลือกตารางหรือช่องว่าง</h2><p>คลิกรายวิชาเพื่อดูรายละเอียดและเตรียม QR หรือคลิกช่องว่างเพื่อเพิ่มตารางใหม่</p></div>
-                                <?php endif; ?>
-                                <div class="term-summary"><span>ช่วงภาคเรียน</span><strong><?= e($term['starts_on']) ?> – <?= e($term['ends_on']) ?></strong><small>สถานะ: <?= e($term['status']==='active'?'กำลังใช้งาน':($term['status']==='planned'?'กำลังวางแผน':'เก็บถาวร')) ?></small></div>
-                            </aside>
-                        </div>
-                    <?php endif; ?>
+                    <?php require __DIR__ . '/views/schedule.php'; ?>
 
-                    <?php if ($term): ?>
-                    <div class="schedule-tools-layout">
-                        <section id="schedule-form" class="form-panel" aria-labelledby="schedule-form-title">
-                            <div class="section-heading"><div><p class="eyebrow">เพิ่มทีละรายการ</p><h2 id="schedule-form-title">เพิ่มตารางเรียนรายสัปดาห์</h2><p>เลือกช่องในตารางด้านบน หรือกรอกวันและเวลาด้วยตนเอง</p></div></div>
-                            <?php if($formErrors && !isset($_GET['import'])): ?><div class="alert alert--error" role="alert"><strong>บันทึกไม่ได้</strong><span><?= e(implode(' ',array_values($formErrors))) ?></span></div><?php endif; ?>
-                            <form method="post" class="form-grid" novalidate data-schedule-form>
-                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_schedule">
-                                <label class="field"><span>ภาคการศึกษา <b>*</b></span><select name="term_id" required><?php foreach($terms as $item): ?><option value="<?= e($item['id']) ?>" <?= (string)($oldInput['term_id']??$termId)===(string)$item['id']?'selected':'' ?> data-start="<?= e($item['starts_on']) ?>" data-end="<?= e($item['ends_on']) ?>"><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
-                                <label class="field"><span>ห้องปฏิบัติการ <b>*</b></span><select name="room_id" required><option value="">เลือกห้อง</option><?php foreach($rooms as $room): if($room['status']!=='available') continue; ?><option value="<?= e($room['id']) ?>" <?= (string)($oldInput['room_id']??'')===(string)$room['id']?'selected':'' ?>><?= e($room['code'].' — '.$room['name']) ?></option><?php endforeach; ?></select></label>
-                                <label class="field"><span>รหัสรายวิชา <b>*</b></span><input name="course_code" value="<?= e($oldInput['course_code']??'') ?>" placeholder="เช่น CPE221" maxlength="30" required></label>
-                                <label class="field"><span>กลุ่มเรียน</span><input name="section" value="<?= e($oldInput['section']??'') ?>" placeholder="เช่น 1" maxlength="30"></label>
-                                <label class="field field--full"><span>ชื่อรายวิชา <b>*</b></span><input name="course_name" value="<?= e($oldInput['course_name']??'') ?>" placeholder="ชื่อรายวิชาหรือปฏิบัติการ" maxlength="150" required></label>
-                                <?php if($user['role']==='admin'): ?><label class="field field--full"><span>อาจารย์ผู้สอน <b>*</b></span><select name="lecturer_user_id" required><option value="">เลือกอาจารย์</option><?php foreach($lecturers as $lecturer): ?><option value="<?= e($lecturer['id']) ?>" <?= (string)($oldInput['lecturer_user_id']??'')===(string)$lecturer['id']?'selected':'' ?>><?= e($lecturer['full_name'].' · '.$lecturer['email']) ?></option><?php endforeach; ?></select></label><?php endif; ?>
-                                <label class="field"><span>วันเรียน <b>*</b></span><select name="day_of_week" required><?php for($day=1;$day<=7;$day++): ?><option value="<?= e($day) ?>" <?= (string)($oldInput['day_of_week']??'1')===(string)$day?'selected':'' ?>><?= e(thai_day_label($day)) ?></option><?php endfor; ?></select></label>
-                                <div class="time-field-pair"><label class="field"><span>เริ่ม <b>*</b></span><input type="time" name="starts_time" value="<?= e($oldInput['starts_time']??'09:00') ?>" step="1800" required></label><label class="field"><span>สิ้นสุด <b>*</b></span><input type="time" name="ends_time" value="<?= e($oldInput['ends_time']??'12:00') ?>" step="1800" required></label></div>
-                                <label class="field"><span>เริ่มใช้ตาราง <b>*</b></span><input type="date" name="active_from" value="<?= e($oldInput['active_from']??$term['starts_on']??'') ?>" required></label>
-                                <label class="field"><span>ใช้ถึงวันที่ <b>*</b></span><input type="date" name="active_until" value="<?= e($oldInput['active_until']??$term['ends_on']??'') ?>" required></label>
-                                <label class="field field--full"><span>หมายเหตุ</span><textarea name="notes" rows="2" maxlength="500" placeholder="เช่น งดเรียนสัปดาห์สอบกลางภาค"><?= e($oldInput['notes']??'') ?></textarea></label>
-                                <div class="slot-selection-message field--full" data-slot-selection aria-live="polite">ยังไม่ได้เลือกช่องเวลา สามารถกรอกเองได้</div>
-                                <div class="form-actions field--full"><button class="button button--primary" type="submit">บันทึกตารางเรียน</button><button class="button button--ghost" type="reset">ล้างข้อมูล</button></div>
-                            </form>
-                        </section>
-                        <div class="schedule-admin-stack">
-                            <?php if($user['role']==='admin'): ?><section id="import-schedule" class="form-panel"><div class="section-heading"><div><p class="eyebrow">งานจำนวนมาก</p><h2>นำเข้าตารางทั้งเทอม</h2><p>รองรับ CSV UTF-8 และตรวจการชนกันก่อนนำเข้าทั้งชุด</p></div></div><?php if($formErrors && isset($_GET['import'])): ?><div class="alert alert--error" role="alert"><strong>นำเข้าไม่ได้</strong><span><?= e(implode(' ',array_values($formErrors))) ?></span></div><?php endif; ?><ol class="import-steps"><li>ดาวน์โหลดไฟล์ตัวอย่าง</li><li>กรอกหนึ่งรายวิชาต่อหนึ่งแถว</li><li>เลือกภาคเรียนและอัปโหลด</li></ol><a class="button button--secondary button--block" href="?download=schedule-template"><span data-icon="download"></span>ดาวน์โหลด CSV ตัวอย่าง</a><form method="post" enctype="multipart/form-data" class="form-stack import-form"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="import_schedule"><label class="field"><span>ภาคการศึกษา</span><select name="term_id" required><?php foreach($terms as $item): ?><option value="<?= e($item['id']) ?>" <?= $item['id']===$termId?'selected':'' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label><label class="field"><span>ไฟล์ตารางเรียน (.csv สูงสุด 2 MB)</span><input type="file" name="schedule_file" accept=".csv,text/csv" required></label><button class="button button--primary button--block" type="submit">ตรวจสอบและนำเข้า</button></form></section><?php endif; ?>
-                        </div>
-                    </div>
-                    <?php endif; ?>
-                    <?php require __DIR__ . '/views/one-off-week.php'; ?>
-                    <?php if ($user['role']==='admin'): ?>
-                        <?php require __DIR__ . '/views/term-dialog.php'; ?>
-                    <?php endif; ?>
 
                 <?php elseif ($page === 'classes'): ?>
                     <?php

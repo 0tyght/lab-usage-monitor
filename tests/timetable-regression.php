@@ -1,0 +1,21 @@
+<?php
+declare(strict_types=1);
+if (PHP_SAPI !== 'cli') exit(1);
+require dirname(__DIR__).'/src/timetable.php';
+$checks = 0;
+$expect = static function (bool $ok,string $message) use (&$checks): void { if (!$ok) throw new RuntimeException($message); $checks++; };
+$event = static fn(string $key,string $start,string $end,string $room='A',string $date='2026-08-31'): array => ['key'=>$key,'date'=>$date,'start_time'=>$start,'end_time'=>$end,'room_code'=>$room];
+$empty = timetable_layout([]);
+$expect($empty['start']===480 && $empty['end']===1200 && $empty['hours']===12, 'Empty week shows 08:00–20:00.');
+$layout = timetable_layout([$event('a','09:00','13:00'),$event('b','10:00','12:00','B'),$event('c','13:00','14:00'),$event('d','09:30','10:30','C')]);
+$events = array_column($layout['days']['2026-08-31']['events'],null,'key');
+$expect($layout['days']['2026-08-31']['lanes']===3, 'Three overlapping classes have three visible lanes.');
+$expect($events['a']['lane']!==$events['b']['lane'] && $events['a']['lane']!==$events['d']['lane'] && $events['b']['lane']!==$events['d']['lane'], 'Concurrent rooms cannot cover each other.');
+$expect($events['a']['lane']===$events['c']['lane'], 'An adjacent class reuses the lane without false overlap.');
+$expect(abs($events['a']['width']-100/3)<0.001, 'Four hours occupy exactly one third of a twelve-hour axis.');
+$expect(abs($events['d']['left']-12.5)<0.001, 'Half-hour starts are positioned exactly.');
+$overnight = timetable_layout([$event('late','23:30','24:00'),$event('early','00:00','01:30','A','2026-09-01')]);
+$expect($overnight['start']===0 && $overnight['end']===1440 && $overnight['hours']===24, 'Axis expands for overnight slices rather than clipping them.');
+$expect(count($overnight['days'])===2, 'Overnight slices remain on their correct date rows.');
+foreach ($overnight['days'] as $day) foreach ($day['events'] as $row) $expect($row['left']>=0 && $row['width']>0 && $row['left']+$row['width']<=100, 'Every block stays inside the horizontal axis.');
+echo "PASS: $checks timetable geometry checks\n";

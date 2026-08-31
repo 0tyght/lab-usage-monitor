@@ -91,6 +91,14 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 - Start with operational questions: busiest rooms, usage over time, peak periods, missing checkout, and data completeness.
 - Exported data must match the current filter state.
 
+### Weekly timetable
+
+- Keep time on the horizontal axis and days/dates on the left. Use true duration widths and separate lanes for simultaneous room bookings; do not stack overlapping items on top of one another.
+- Use one applied semester/room/search filter row, followed by week navigation and a full-width timetable. Avoid an empty permanent detail sidebar or duplicate semester cards.
+- Selecting a start/end slot shows a named day, 24-hour time range, duration and `ใช้ช่วงเวลานี้` action. One-hour and reverse-direction selection must work without a scroll/focus jump into a hidden form.
+- Create recurring schedules, import CSV, and show selected schedule details in dialogs. Retain drafts and the viewed room/week on errors. Keep `สร้างคลาสเรียน` distinct from `เพิ่มตารางเรียนรายสัปดาห์`.
+- Preview room/lecturer conflicts before enabling save; recheck on the server when saving. Loading, network retry, validation errors and stale unapplied filters must be explicit. A visually empty slot is not an assertion of availability for the entire term.
+
 ## Content style
 
 - Academic term creation asks only for academic year and semester. Display locked dates as read-only text from the official NU regular-undergraduate calendar; never show editable dates or a confirmation checkbox. Offer only catalog years, and derive dates server-side. Keep the official source link secondary to the dates.

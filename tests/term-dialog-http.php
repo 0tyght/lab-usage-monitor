@@ -80,7 +80,8 @@ $expect(!preg_match('/<dialog[^>]+\bopen\b/', $success), 'Dialog is closed after
 [$status, , $location] = $request($context, $term + ['csrf_token'=>$csrf($success)]);
 [, $duplicate] = $request('/' . $location);
 $expect($status === 302 && str_contains($duplicate, 'มีปีและภาคการศึกษานี้อยู่แล้ว'), 'Repeated save returns a duplicate-term error');
-$expect(!preg_match('/id="schedule-form".*?alert--error/s', strstr($duplicate, '<div class="schedule-admin-stack">', true)), 'Term errors do not leak into the schedule form');
+$duplicateDom=new DOMDocument(); @$duplicateDom->loadHTML('<?xml encoding="UTF-8">'.$duplicate); $duplicateXPath=new DOMXPath($duplicateDom);
+$expect($duplicateXPath->query('//*[@id="schedule-editor"]//*[@data-schedule-errors]')->length===0, 'Term errors do not leak into the schedule form');
 require dirname(__DIR__) . '/src/bootstrap.php';
 $expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === 1, 'Duplicate save does not create a second record');
 $savedTerm = db()->query('SELECT * FROM academic_terms LIMIT 1')->fetch();
@@ -258,3 +259,40 @@ foreach (['classes','calendar','schedule'] as $copyPage) {
     $expect($sameLabel && !str_contains($copyHtml,'เพิ่มคาบ'),'Entry points use one action name on '.$copyPage);
 }
 echo "HTTP workflows and terminology checks passed: $checks\n";
+
+// Horizontal timetable workflow, preview-only validation, and modal recovery.
+[, $weekHtml]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-11-16');
+$weekDom=new DOMDocument(); @$weekDom->loadHTML('<?xml encoding="UTF-8">'.$weekHtml); $weekXPath=new DOMXPath($weekDom);
+$expect($weekXPath->query('//*[@data-horizontal-timetable]')->length===1 && $weekXPath->query('//*[contains(@class,"schedule-hour") and @class="schedule-hour"]')->length===12,'Timetable has twelve horizontal hour columns');
+$expect($weekXPath->query('//*[@data-schedule-date]')->length===5,'Weekdays are five separate date rows');
+$expect($weekXPath->query('//aside[contains(@class,"schedule-context")]')->length===0 && !str_contains($weekHtml,'academic-year-slots'),'Timetable no longer has an empty sidebar or duplicate term selector');
+$expect($weekXPath->query('//*[@data-schedule-form]/ancestor::dialog')->length===1 && $weekXPath->query('//*[@id="schedule-import"]')->length===1,'Creation and import are dedicated dialogs');
+[$status,$invalidWeek]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-99-99');
+$expect($status===200 && str_contains($invalidWeek,'data-horizontal-timetable'),'Invalid week query falls back safely instead of crashing');
+$previewInput=['term_id'=>$importTerm,'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'course_code'=>'TIME102','course_name'=>'ทดสอบตารางแนวนอน','day_of_week'=>1,'starts_time'=>'09:30','ends_time'=>'12:00','active_from'=>'2026-11-16','active_until'=>'2026-11-30','csrf_token'=>$csrf($weekHtml)];
+$scheduleCount=(int)db()->query('SELECT COUNT(*) FROM course_schedules')->fetchColumn();
+[$status,$previewBody]=$request('/?api=schedule-preview',$previewInput);
+$expect($status===200 && !json_decode($previewBody,true)['ok'],'Preview catches recurring conflicts before saving');
+$expect((int)db()->query('SELECT COUNT(*) FROM course_schedules')->fetchColumn()===$scheduleCount,'Preview cannot create timetable records');
+[$status]=$request('/?api=schedule-preview',array_replace($previewInput,['csrf_token'=>'invalid']));
+$expect($status===403,'Preview requires valid CSRF and returns JSON rather than a redirect');
+$otherRoom=(int)db()->query('SELECT id FROM rooms WHERE id<>'.$roomId.' ORDER BY id LIMIT 1')->fetchColumn();
+$otherLecturer=(int)db()->query("SELECT id FROM users WHERE email='other@example.invalid'")->fetchColumn();
+$parallelInput=array_replace($previewInput,['room_id'=>$otherRoom,'lecturer_user_id'=>$otherLecturer]);
+[$status,$previewBody]=$request('/?api=schedule-preview',$parallelInput);
+$expect($status===200 && json_decode($previewBody,true)['ok'],'Different room and lecturer can use parallel times');
+$expect((int)db()->query('SELECT COUNT(*) FROM course_schedules')->fetchColumn()===$scheduleCount,'Successful preview is also read-only');
+[$status,,$scheduleSaved]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-11-16&room_id='.$otherRoom,$parallelInput+['action'=>'create_schedule']);
+$expect($status===302 && str_contains($scheduleSaved,'selected=') && str_contains($scheduleSaved,'week=2026-11-16') && str_contains($scheduleSaved,'room_id='.$otherRoom),'Save preserves selected room/week and opens details');
+[, $savedDetails]=$request('/'.$scheduleSaved);
+$expect((bool)preg_match('/<dialog id="schedule-detail"[^>]*open/',$savedDetails),'Saved recurring item opens a detail popup');
+[, $parallelHtml]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-11-16');
+$expect(str_contains($parallelHtml,'--lane-count:2') && str_contains($parallelHtml,'--event-lane:1'),'Concurrent classrooms render in separate lanes');
+[$status,,$scheduleRejected]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-11-16&room_id='.$otherRoom,$parallelInput+['action'=>'create_schedule']);
+[, $scheduleFailed]=$request('/'.$scheduleRejected);
+$expect(str_contains($scheduleRejected,'new_schedule=1') && str_contains($scheduleRejected,'room_id='.$otherRoom) && str_contains($scheduleFailed,'value="TIME102"') && str_contains($scheduleFailed,'data-schedule-errors'),'Conflict preserves the draft and room/week context in the editor');
+$adminCookies=$cookies; $cookies=[];
+[$status]=$request('/?api=schedule-preview',$previewInput);
+$expect($status===401,'Anonymous callers cannot inspect timetable conflicts');
+$cookies=$adminCookies;
+echo "HTTP workflows and horizontal timetable checks passed: $checks\n";

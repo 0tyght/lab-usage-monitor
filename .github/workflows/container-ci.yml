@@ -29,6 +29,7 @@ jobs:
           node --check assets/planning.js
           node --check assets/one-off.js
           node --check assets/class-panel.js
+          node --check assets/timetable.js
 
       - name: Verify production bootstrap
         run: |
@@ -49,6 +50,9 @@ jobs:
 
       - name: Test one-off bookings and recurring conflicts
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/one-off-regression.php
+
+      - name: Test horizontal timetable positioning and overlapping lanes
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/timetable-regression.php
 
       - name: Test admission lifecycle, capacity and multi-hour classes
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/class-lifecycle-regression.php
