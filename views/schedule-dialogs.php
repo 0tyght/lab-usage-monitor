@@ -1,30 +1,3 @@
-<?php $scheduleFormErrors = isset($_GET['import']) ? [] : $formErrors; ?>
-<dialog id="schedule-editor" class="term-dialog schedule-dialog" data-schedule-overlay aria-labelledby="schedule-form-title" <?= isset($_GET['new_schedule']) || $scheduleFormErrors ? 'open' : '' ?>>
-    <header class="term-dialog__header"><div><h2 id="schedule-form-title">เพิ่มตารางเรียนรายสัปดาห์</h2><p>ทำซ้ำทุกสัปดาห์ในภาคการศึกษา · ถ้าใช้เพียงวันเดียว ให้ใช้ “สร้างคลาสเรียน”</p></div><a href="<?= e($scheduleReturnUrl) ?>" class="icon-button" data-close-schedule aria-label="ปิดหน้าต่างเพิ่มตารางเรียน"><span data-icon="x"></span></a></header>
-    <form method="post" action="<?= e($scheduleReturnUrl) ?>" data-schedule-form novalidate>
-        <div class="term-dialog__body">
-            <?php if ($scheduleFormErrors): ?><div class="alert alert--error" role="alert" data-schedule-errors tabindex="-1"><strong>ยังไม่ได้บันทึกตาราง</strong><span><?= e(implode(' ',array_values($scheduleFormErrors))) ?></span></div><?php endif; ?>
-            <div class="form-grid">
-<input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_schedule">
-                                <label class="field"><span>ภาคการศึกษา <b>*</b></span><select name="term_id" required><?php foreach($terms as $item): ?><option value="<?= e($item['id']) ?>" <?= (string)($oldInput['term_id']??$termId)===(string)$item['id']?'selected':'' ?> data-start="<?= e($item['starts_on']) ?>" data-end="<?= e($item['ends_on']) ?>"><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
-                                <label class="field"><span>ห้องปฏิบัติการ <b>*</b></span><select name="room_id" required><option value="">เลือกห้อง</option><?php foreach($rooms as $room): if($room['status']!=='available') continue; ?><option value="<?= e($room['id']) ?>" <?= (string)($oldInput['room_id']??$roomFilter)===(string)$room['id']?'selected':'' ?>><?= e($room['code'].' — '.$room['name']) ?></option><?php endforeach; ?></select></label>
-                                <label class="field"><span>รหัสรายวิชา <b>*</b></span><input name="course_code" value="<?= e($oldInput['course_code']??'') ?>" placeholder="เช่น CPE221" maxlength="30" required></label>
-                                <label class="field"><span>กลุ่มเรียน</span><input name="section" value="<?= e($oldInput['section']??'') ?>" placeholder="เช่น 1" maxlength="30"></label>
-                                <label class="field field--full"><span>ชื่อรายวิชา <b>*</b></span><input name="course_name" value="<?= e($oldInput['course_name']??'') ?>" placeholder="ชื่อรายวิชาหรือปฏิบัติการ" maxlength="150" required></label>
-                                <?php if($user['role']==='admin'): ?><label class="field field--full"><span>อาจารย์ผู้สอน <b>*</b></span><select name="lecturer_user_id" required><option value="">เลือกอาจารย์</option><?php foreach($lecturers as $lecturer): ?><option value="<?= e($lecturer['id']) ?>" <?= (string)($oldInput['lecturer_user_id']??'')===(string)$lecturer['id']?'selected':'' ?>><?= e($lecturer['full_name'].' · '.$lecturer['email']) ?></option><?php endforeach; ?></select></label><?php endif; ?>
-                                <label class="field"><span>วันเรียน <b>*</b></span><select name="day_of_week" required><?php for($day=1;$day<=7;$day++): ?><option value="<?= e($day) ?>" <?= (string)($oldInput['day_of_week']??'1')===(string)$day?'selected':'' ?>><?= e(thai_day_label($day)) ?></option><?php endfor; ?></select></label>
-                                <div class="time-field-pair"><label class="field"><span>เริ่ม <b>*</b></span><input type="time" name="starts_time" value="<?= e($oldInput['starts_time']??'09:00') ?>" step="1800" required></label><label class="field"><span>สิ้นสุด <b>*</b></span><input type="time" name="ends_time" value="<?= e($oldInput['ends_time']??'12:00') ?>" step="1800" required></label></div>
-                                <label class="field"><span>เริ่มใช้ตาราง <b>*</b></span><input type="date" name="active_from" value="<?= e($oldInput['active_from']??$term['starts_on']??'') ?>" required></label>
-                                <label class="field"><span>ใช้ถึงวันที่ <b>*</b></span><input type="date" name="active_until" value="<?= e($oldInput['active_until']??$term['ends_on']??'') ?>" required></label>
-                                <label class="field field--full"><span>หมายเหตุ</span><textarea name="notes" rows="2" maxlength="500" placeholder="เช่น งดเรียนสัปดาห์สอบกลางภาค"><?= e($oldInput['notes']??'') ?></textarea></label>
-                                <p class="helper-text field--full">ทำซ้ำในวันและเวลาเดิมทุกสัปดาห์ เฉพาะช่วงวันที่ด้านบน</p>
-
-            </div>
-        </div>
-        <div class="schedule-preview" data-schedule-preview aria-live="polite"><span data-schedule-preview-text>กรอกข้อมูลให้ครบ ระบบจะตรวจเวลาซ้ำก่อนบันทึก</span><button type="button" class="text-button" data-retry-schedule-preview hidden>ลองตรวจอีกครั้ง</button></div>
-        <footer class="term-dialog__actions"><a href="<?= e($scheduleReturnUrl) ?>" class="button button--secondary" data-close-schedule>ยกเลิก</a><button class="button button--primary" type="submit">บันทึกตารางเรียน</button></footer>
-    </form>
-</dialog>
 <?php if ($selectedSchedule): ?>
 <dialog id="schedule-detail" class="term-dialog schedule-detail-dialog" data-schedule-overlay aria-label="รายละเอียดตารางเรียน" open>
     <header class="term-dialog__header"><div><h2>รายละเอียดตารางเรียน</h2><p><?= e(thai_date_label($selectedDate)) ?> · ตารางรายสัปดาห์</p></div><a href="<?= e($scheduleReturnUrl) ?>" class="icon-button" data-close-schedule aria-label="ปิดรายละเอียดตาราง"><span data-icon="x"></span></a></header>

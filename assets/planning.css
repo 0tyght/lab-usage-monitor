@@ -8,6 +8,22 @@
 .term-dialog .inline-note { margin: 0; }
 .term-dialog .helper-text { margin: 0; }
 .one-off-dialog { width: min(760px, calc(100% - 32px)); }
+.class-mode-picker { border: 0; padding: 0; margin: 0 0 24px; min-width: 0; }
+.class-mode-picker legend { font-weight: 600; margin-bottom: 8px; }
+.class-mode-options { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.class-mode-options label { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.class-mode-options label:has(:checked) { border-color: var(--brand-600); background: var(--brand-50); }
+.one-off-dialog .class-mode-options input { width: 18px; height: 18px; min-height: 18px; accent-color: var(--brand-600); flex-shrink: 0; }
+.class-mode-options strong, .class-mode-options small { display: block; }
+.class-mode-options small { color: var(--muted); margin-top: 4px; }
+.class-semester-fields { margin-bottom: 16px; }
+.class-semester-fields .helper-text { margin-top: 8px; }
+.class-create-footer { flex-direction: column; gap: 12px; }
+.class-create-buttons { display: flex; justify-content: flex-end; gap: 8px; }
+.class-booking-summary { font-size: 13px; }
+.class-booking-summary p { margin: 4px 0; white-space: pre-line; }
+.class-booking-summary small { color: var(--muted); }
+.one-off-dialog [data-once-availability].is-error { color: var(--danger, #b42318); }
 .one-off-time-heading { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px 16px; margin: 24px 0 8px; }
 .one-off-time-heading small { color: var(--muted); }
 .one-off-slots { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; margin: 12px 0 16px; }

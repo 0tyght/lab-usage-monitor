@@ -39,10 +39,9 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
 ?>
 <section class="schedule-page" aria-labelledby="schedule-page-title">
     <header class="page-header schedule-page-header">
-        <div><h1 id="schedule-page-title">ตารางเรียนห้องปฏิบัติการ</h1><p>ดูเวลาใช้ห้อง เลือกช่วงเวลา แล้วเพิ่มตารางเรียน</p></div>
+        <div><h1 id="schedule-page-title">ตารางเรียนห้องปฏิบัติการ</h1><p>เลือกช่วงเวลาเพื่อสร้างคลาสเรียนแบบครั้งเดียวหรือทั้งภาคเรียน</p></div>
         <div class="schedule-header-actions">
-            <a class="button button--secondary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog">สร้างคลาสเรียน</a>
-            <?php if ($term): ?><a class="button button--primary" href="<?= e($scheduleReturnUrl.'&new_schedule=1') ?>" data-open-schedule="schedule-editor" aria-haspopup="dialog" aria-controls="schedule-editor"><span data-icon="plus"></span>เพิ่มตารางเรียนรายสัปดาห์</a><?php endif; ?>
+            <a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>สร้างคลาสเรียน</a>
         </div>
     </header>
     <?php if (!$term): ?>

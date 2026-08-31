@@ -31,6 +31,24 @@ function redirect_class_panel(int $id): never
     redirect_to('classes',array_intersect_key($_GET,array_flip(['q','status']))+['class_id'=>$id]);
 }
 
+function redirect_schedule_panel(int $id): never
+{
+    $scheduleContext = array_intersect_key($_GET, array_flip(['room_id','week','weekend','q']));
+    $saved = get_course_schedule($id);
+    if (!$saved) redirect_to('schedule');
+    $week = week_start_date((string)($scheduleContext['week'] ?? ''));
+    $occurrence = $week->modify('+'.($saved['day_of_week']-1).' days')->format('Y-m-d');
+    if ($occurrence < $saved['active_from'] || $occurrence > $saved['active_until']) {
+        $first = new DateTimeImmutable($saved['active_from']);
+        $first = $first->modify('+'.(($saved['day_of_week']-(int)$first->format('N')+7)%7).' days');
+        $scheduleContext['week'] = week_start_date($first->format('Y-m-d'))->format('Y-m-d');
+    }
+    if ($saved['day_of_week'] > 5) $scheduleContext['weekend'] = 1;
+    if (!empty($scheduleContext['room_id'])) $scheduleContext['room_id'] = $saved['room_id'];
+    if (!empty($scheduleContext['q']) && stripos(implode(' ',[$saved['course_code'],$saved['course_name'],$saved['lecturer_name'],$saved['room_code']]),$scheduleContext['q']) === false) unset($scheduleContext['q']);
+    redirect_to('schedule', ['term_id'=>$saved['term_id'], 'selected'=>$id] + $scheduleContext);
+}
+
 function thai_datetime(?string $value, bool $withDate = true): string
 {
     if (!$value) {
@@ -281,14 +299,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $requestId = (string)($_POST['one_off_request'] ?? '');
         $known = $_SESSION['one_off_requests'][$requestId] ?? null;
         if (is_int($known) && $known > 0 && get_class_session($known)) redirect_class_panel($known);
-        $result = $known === 0 ? create_one_off_session($_POST) : ['ok'=>false,'errors'=>['form'=>'แบบฟอร์มหมดอายุ กรุณาเปิดหน้าต่างสร้างคลาสเรียนใหม่']];
+        $mode = (string)($_POST['class_mode'] ?? 'once');
+        if (is_string($known) && preg_match('/^schedule:(\d+)$/', $known, $savedMatch)) redirect_schedule_panel((int)$savedMatch[1]);
+        $result = $known === 0 ? match ($mode) {
+            'once' => create_one_off_session($_POST),
+            'semester' => create_course_schedule($_POST),
+            default => ['ok'=>false,'errors'=>['class_mode'=>'กรุณาเลือกครั้งเดียวหรือทั้งภาคเรียน']],
+        } : ['ok'=>false,'errors'=>['form'=>'แบบฟอร์มหมดอายุ กรุณาเปิดหน้าต่างสร้างคลาสเรียนใหม่']];
         if ($result['ok']) {
+            if ($mode === 'semester') {
+                $_SESSION['one_off_requests'][$requestId] = 'schedule:'.$result['id'];
+                set_flash('success','สร้างคลาสเรียนทั้งภาคเรียนแล้ว','บันทึกการใช้ห้องในวันและเวลาเดิมทุกสัปดาห์ตลอดภาคเรียนแล้ว เลือกวันที่ในตารางเพื่อเตรียม QR ของแต่ละครั้ง');
+                redirect_schedule_panel((int)$result['id']);
+            }
             $_SESSION['one_off_requests'][$requestId] = (int)$result['id'];
             set_flash('success','สร้างคลาสเรียนแล้ว','บันทึกเฉพาะวันที่เลือก ไม่มีการทำซ้ำ และเตรียม QR สำหรับคลาสเรียนนี้แล้ว');
             redirect_class_panel((int)$result['id']);
         }
         $_SESSION['one_off_errors'] = $result['errors'] ?? ['form'=>'บันทึกไม่สำเร็จ กรุณาลองอีกครั้ง'];
-        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','class_date','starts_time','ends_time','course_code','course_name','section','notes','checkin_mode','one_off_request']));
+        $_SESSION['one_off_input'] = array_intersect_key($_POST,array_flip(['room_id','lecturer_user_id','class_date','starts_time','ends_time','course_code','course_name','section','notes','checkin_mode','one_off_request','class_mode','term_id','day_of_week']));
         $returnPage = in_array($_GET['page'] ?? '', ['schedule','classes'],true) ? $_GET['page'] : 'calendar';
         $context = array_intersect_key($_GET,array_flip(['month','term_id','room_id','week','weekend','q','source']));
         redirect_to($returnPage,$context+['new_once'=>1]);
@@ -337,18 +366,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $scheduleContext = array_intersect_key($_GET, array_flip(['room_id','week','weekend','q']));
         if ($result['ok']) {
             set_flash('success', 'เพิ่มตารางเรียนรายสัปดาห์แล้ว', 'ระบบตรวจสอบห้องและเวลาไม่ให้ชนกันเรียบร้อย');
-            $saved = get_course_schedule((int)$result['id']);
-            $week = week_start_date((string)($scheduleContext['week'] ?? ''));
-            $occurrence = $week->modify('+'.($saved['day_of_week']-1).' days')->format('Y-m-d');
-            if ($occurrence < $saved['active_from'] || $occurrence > $saved['active_until']) {
-                $first = new DateTimeImmutable($saved['active_from']);
-                $first = $first->modify('+'.(($saved['day_of_week']-(int)$first->format('N')+7)%7).' days');
-                $scheduleContext['week'] = week_start_date($first->format('Y-m-d'))->format('Y-m-d');
-            }
-            if ($saved['day_of_week'] > 5) $scheduleContext['weekend'] = 1;
-            if (!empty($scheduleContext['room_id'])) $scheduleContext['room_id'] = $saved['room_id'];
-            if (!empty($scheduleContext['q']) && stripos(implode(' ',[$saved['course_code'],$saved['course_name'],$saved['lecturer_name'],$saved['room_code']]),$scheduleContext['q']) === false) unset($scheduleContext['q']);
-            redirect_to('schedule', ['term_id'=>$saved['term_id'], 'selected'=>(int)$result['id']] + $scheduleContext);
+            redirect_schedule_panel((int)$result['id']);
         }
         $_SESSION['form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถเพิ่มตารางเรียนได้'];
         $_SESSION['old_input'] = $_POST;
@@ -598,7 +616,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <?php if ($page !== 'schedule'): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
+                <?php if (!in_array($page,['schedule','calendar','classes','records'],true)): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
             </header>
             <main id="main-content" class="content <?= $page === 'schedule' ? 'content--schedule' : '' ?>">
                 <?php if ($flash): ?>

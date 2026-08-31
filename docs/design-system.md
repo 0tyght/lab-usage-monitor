@@ -96,14 +96,15 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 - Keep time on the horizontal axis and days/dates on the left. Use true duration widths and separate lanes for simultaneous room bookings; do not stack overlapping items on top of one another.
 - Use one applied semester/room/search filter row, followed by week navigation and a full-width timetable. Avoid an empty permanent detail sidebar or duplicate semester cards.
 - Selecting a start/end slot shows a named day, 24-hour time range, duration and `ใช้ช่วงเวลานี้` action. One-hour and reverse-direction selection must work without a scroll/focus jump into a hidden form.
-- Create recurring schedules, import CSV, and show selected schedule details in dialogs. Retain drafts and the viewed room/week on errors. Keep `สร้างคลาสเรียน` distinct from `เพิ่มตารางเรียนรายสัปดาห์`.
+- Use one `สร้างคลาสเรียน` entry and one dialog. Place `ครั้งเดียว / ทั้งภาคเรียน` at the top, above shared room, course, lecturer and time fields. Carry selected date/weekday, room and multi-hour range from the timetable into either mode. CSV import remains a separate bulk operation. Retain drafts and the viewed room/week on errors.
+- Full-term creation must save a real recurring room reservation, not just a term or empty class. Derive term bounds on the server, preview the first/last occurrence and count, and check conflicts across the entire term. Explain that each lesson date has its own QR and attendance list.
 - Preview room/lecturer conflicts before enabling save; recheck on the server when saving. Loading, network retry, validation errors and stale unapplied filters must be explicit. A visually empty slot is not an assertion of availability for the entire term.
 
 ## Content style
 
 - Academic term creation asks only for academic year and semester. Display locked dates as read-only text from the official NU regular-undergraduate calendar; never show editable dates or a confirmation checkbox. Offer only catalog years, and derive dates server-side. Keep the official source link secondary to the dates.
-- Canonical action: `สร้างคลาสเรียน` for a class on one date. Use the same label on entry buttons, dialog title and submit; success is `สร้างคลาสเรียนแล้ว`. Mention automatic QR preparation in helper text, not a competing action name.
-- Use `คลาสเรียนแบบครั้งเดียว` only as a type/section label when distinguishing it from a recurring plan. Use `เพิ่มตารางเรียนรายสัปดาห์` for recurring scheduling. Reserve `คาบ` for the duration unit in reports; do not use `เพิ่มคาบ` as an alternative creation action.
+- Canonical action: `สร้างคลาสเรียน` for both one-date and full-term creation. Use the same label on entry buttons, dialog title and submit. Explain the different saved results within the dialog, not with competing entry buttons.
+- Use `ครั้งเดียว` and `ทั้งภาคเรียน` as creation modes; use `ตารางรายสัปดาห์` only as a description of recurrence. Reserve `คาบ` for the duration unit in reports, never as an alternative creation action.
 - Use direct Thai labels: `สแกน QR Code`, `บันทึกการเข้าใช้`, `ลองอีกครั้ง`, `ดาวน์โหลดรายงาน`.
 - Errors should say what happened and how to recover.
 - Avoid vague labels such as `ตกลง`, `ดำเนินการ`, or `ส่ง` when a specific verb is available.

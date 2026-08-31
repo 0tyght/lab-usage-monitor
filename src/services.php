@@ -243,6 +243,13 @@ function get_course_schedule(int $id, bool $enforceOwnership = true): ?array
 
 function validate_schedule_input(array $input, int $ignoreId = 0): array
 {
+    // The unified class form reserves the entire configured term. Posted dates
+    // cannot shorten the conflict check or create a misleading partial schedule.
+    if (($input['class_mode'] ?? '') === 'semester') {
+        $selectedTerm = get_academic_term((int)($input['term_id'] ?? 0));
+        $input['active_from'] = $selectedTerm['starts_on'] ?? '';
+        $input['active_until'] = $selectedTerm['ends_on'] ?? '';
+    }
     $viewer = current_user();
     $termId = filter_var($input['term_id'] ?? null, FILTER_VALIDATE_INT);
     $roomId = filter_var($input['room_id'] ?? null, FILTER_VALIDATE_INT);

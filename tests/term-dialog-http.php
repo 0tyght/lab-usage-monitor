@@ -266,7 +266,7 @@ $weekDom=new DOMDocument(); @$weekDom->loadHTML('<?xml encoding="UTF-8">'.$weekH
 $expect($weekXPath->query('//*[@data-horizontal-timetable]')->length===1 && $weekXPath->query('//*[contains(@class,"schedule-hour") and @class="schedule-hour"]')->length===12,'Timetable has twelve horizontal hour columns');
 $expect($weekXPath->query('//*[@data-schedule-date]')->length===5,'Weekdays are five separate date rows');
 $expect($weekXPath->query('//aside[contains(@class,"schedule-context")]')->length===0 && !str_contains($weekHtml,'academic-year-slots'),'Timetable no longer has an empty sidebar or duplicate term selector');
-$expect($weekXPath->query('//*[@data-schedule-form]/ancestor::dialog')->length===1 && $weekXPath->query('//*[@id="schedule-import"]')->length===1,'Creation and import are dedicated dialogs');
+$expect($weekXPath->query('//*[@data-one-off-form]/ancestor::dialog')->length===1 && $weekXPath->query('//*[@id="schedule-import"]')->length===1 && $weekXPath->query('//*[@id="schedule-editor"]')->length===0,'One unified creation dialog and a separate bulk import dialog');
 [$status,$invalidWeek]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-99-99');
 $expect($status===200 && str_contains($invalidWeek,'data-horizontal-timetable'),'Invalid week query falls back safely instead of crashing');
 $previewInput=['term_id'=>$importTerm,'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'course_code'=>'TIME102','course_name'=>'ทดสอบตารางแนวนอน','day_of_week'=>1,'starts_time'=>'09:30','ends_time'=>'12:00','active_from'=>'2026-11-16','active_until'=>'2026-11-30','csrf_token'=>$csrf($weekHtml)];
@@ -290,9 +290,48 @@ $expect((bool)preg_match('/<dialog id="schedule-detail"[^>]*open/',$savedDetails
 $expect(str_contains($parallelHtml,'--lane-count:2') && str_contains($parallelHtml,'--event-lane:1'),'Concurrent classrooms render in separate lanes');
 [$status,,$scheduleRejected]=$request('/?page=schedule&term_id='.$importTerm.'&week=2026-11-16&room_id='.$otherRoom,$parallelInput+['action'=>'create_schedule']);
 [, $scheduleFailed]=$request('/'.$scheduleRejected);
-$expect(str_contains($scheduleRejected,'new_schedule=1') && str_contains($scheduleRejected,'room_id='.$otherRoom) && str_contains($scheduleFailed,'value="TIME102"') && str_contains($scheduleFailed,'data-schedule-errors'),'Conflict preserves the draft and room/week context in the editor');
+$expect(str_contains($scheduleRejected,'new_schedule=1') && str_contains($scheduleRejected,'room_id='.$otherRoom) && str_contains($scheduleFailed,'value="TIME102"') && str_contains($scheduleFailed,'data-once-errors'),'Legacy recurring errors recover in the unified dialog with room/week context');
 $adminCookies=$cookies; $cookies=[];
 [$status]=$request('/?api=schedule-preview',$previewInput);
 $expect($status===401,'Anonymous callers cannot inspect timetable conflicts');
 $cookies=$adminCookies;
 echo "HTTP workflows and horizontal timetable checks passed: $checks\n";
+
+// Unified creation: no empty semester records, full-term conflicts and replay protection.
+[, $unifiedHtml]=$request('/?page=schedule&term_id='.$importTerm.'&new_once=1');
+$unifiedDom=new DOMDocument(); @$unifiedDom->loadHTML('<?xml encoding="UTF-8">'.$unifiedHtml); $unifiedXPath=new DOMXPath($unifiedDom);
+$expect($unifiedXPath->query('//input[@name="class_mode"]')->length===2 && !str_contains($unifiedHtml,'เพิ่มตารางเรียนรายสัปดาห์'),'One creation entry offers once and semester modes at the top');
+$expect($unifiedXPath->query('//*[@data-one-off-form]//input[@name="active_from" or @name="active_until"]')->length===0,'Full-term class form has no editable term dates');
+preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$unifiedHtml,$unifiedToken);
+$unifiedInput=['action'=>'create_one_off','class_mode'=>'semester','one_off_request'=>$unifiedToken[1],'csrf_token'=>$csrf($unifiedHtml),'term_id'=>$importTerm,'room_id'=>$roomId,'lecturer_user_id'=>$adminId,'day_of_week'=>2,'starts_time'=>'09:00','ends_time'=>'13:00','course_code'=>'FULLTERM','course_name'=>'ทดสอบคลาสทั้งภาคเรียน','active_from'=>'2026-11-24','active_until'=>'2026-11-24'];
+$beforeSchedules=(int)db()->query('SELECT COUNT(*) FROM course_schedules')->fetchColumn();
+$beforeTerms=(int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn();
+[$status,,$missingRoom]=$request('/?page=schedule',array_replace($unifiedInput,['room_id'=>'']));
+[, $missingHtml]=$request('/'.$missingRoom);
+$expect($status===302 && str_contains($missingHtml,'data-once-errors') && str_contains($missingHtml,'value="semester" checked'),'Missing room retains semester mode and draft in the dialog');
+$expect((int)db()->query('SELECT COUNT(*) FROM course_schedules')->fetchColumn()===$beforeSchedules && (int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn()===$beforeTerms,'Incomplete full-term creation writes neither an empty schedule nor a term');
+[$status,,$savedUnified]=$request('/?page=schedule&week=2026-11-16',$unifiedInput);
+$full=db()->query("SELECT * FROM course_schedules WHERE course_code='FULLTERM'")->fetch();
+$official=get_academic_term($importTerm);
+$expect($status===302 && str_contains($savedUnified,'selected=') && $full && $full['active_from']===$official['starts_on'] && $full['active_until']===$official['ends_on'],'Semester saves the full configured term even when posted dates try to shorten it');
+$expect($full['day_of_week']===2 && $full['room_id']===$roomId && $full['starts_time']==='09:00' && $full['ends_time']==='13:00','Semester persists selected room, weekday and four-hour range');
+foreach (['2026-11-17','2027-03-16'] as $occurrenceDate) {
+    [, $occurrenceHtml]=$request('/?page=calendar&month='.substr($occurrenceDate,0,7).'&date='.$occurrenceDate);
+    $expect(str_contains($occurrenceHtml,'FULLTERM'),'Full-term room reservation appears in calendar on '.$occurrenceDate);
+}
+$request('/?page=schedule',$unifiedInput);
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='FULLTERM'")->fetchColumn()===1,'Replaying full-term submit cannot duplicate the schedule');
+[, $nextForm]=$request('/?page=classes&new_once=1');
+preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$nextForm,$nextToken);
+$collision=array_replace($unifiedInput,['one_off_request'=>$nextToken[1],'course_code'=>'WHOLECHECK','day_of_week'=>1,'starts_time'=>'09:30','ends_time'=>'10:30','active_from'=>'2027-03-01','active_until'=>'2027-03-01']);
+[$status,$collisionPreview]=$request('/?api=schedule-preview',$collision);
+$expect($status===200 && !json_decode($collisionPreview,true)['ok'],'Full-term preview catches a collision outside the forged short date range');
+$request('/?page=classes',$collision);
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='WHOLECHECK'")->fetchColumn()===0,'Save also rejects full-term collisions without partial reservations');
+$request('/?page=classes',array_replace($collision,['class_mode'=>'unknown']));
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='WHOLECHECK'")->fetchColumn()===0,'Unknown mode cannot silently create a recurring schedule');
+$oneFromUnified=array_replace($collision,['class_mode'=>'once','class_date'=>'2030-07-02','course_code'=>'UNIFIEDONCE','starts_time'=>'08:00','ends_time'=>'12:00']);
+[$status,,$onceUnifiedLocation]=$request('/?page=classes',$oneFromUnified);
+$expect($status===302 && str_contains($onceUnifiedLocation,'class_id=') && (int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='UNIFIEDONCE'")->fetchColumn()===1,'The same form can recover by switching to once and create a real four-hour class');
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='UNIFIEDONCE'")->fetchColumn()===0,'Once mode never creates an accidental semester reservation');
+echo "Unified class creation checks passed: $checks\n";
