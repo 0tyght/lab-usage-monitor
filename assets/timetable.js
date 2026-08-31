@@ -97,7 +97,8 @@
         opener:event.currentTarget, day_of_week:range.day, class_date:range.date,
         starts_time:clock(range.start), ends_time:clock(range.end),
         room_id:filter.elements.namedItem('room_id').value,
-        term_id:filter.elements.namedItem('term_id').value,
+        academic_year:filter.elements.namedItem('term_id').selectedOptions[0].dataset.academicYear,
+        semester:filter.elements.namedItem('term_id').selectedOptions[0].dataset.semester,
       }}));
     });
     filter.addEventListener('input', () => {

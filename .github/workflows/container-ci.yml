@@ -29,6 +29,7 @@ jobs:
           node --check assets/planning.js
           node --check assets/one-off.js
           node --check assets/class-panel.js
+          node --check assets/class-change.js
           node --check assets/timetable.js
 
       - name: Verify production bootstrap
@@ -59,6 +60,9 @@ jobs:
 
       - name: Test simultaneous attendance at room capacity
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/attendance-concurrency.php
+
+      - name: Test atomic multi-slot classes and scoped changes
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/class-batch-regression.php
 
       - name: Verify HTTP serving and private file isolation
         run: |

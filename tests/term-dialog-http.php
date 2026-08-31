@@ -50,50 +50,27 @@ $csrf = static function (string $body): string {
 [$status] = $request('/?page=login', ['action'=>'login', 'csrf_token'=>$csrf($login), 'email'=>'admin@example.invalid', 'password'=>getenv('LUMS_ADMIN_PASSWORD')]);
 $expect($status === 302, 'Synthetic admin can sign in');
 [, $empty] = $request('/?page=schedule');
-$expect(str_contains($empty, 'ยังไม่มีภาคการศึกษา'), 'Fresh database shows the empty-term state');
-$expect(!str_contains($empty, 'data-schedule-form'), 'No unusable schedule form before the first term');
-$expect(str_contains($empty, 'data-open-term'), 'Empty-term state offers the popup action');
-[, $fallback] = $request('/?page=schedule&new_term=1');
-$expect((bool)preg_match('/<dialog[^>]+\bopen\b/', $fallback), 'Direct link opens the form without JavaScript');
-$termDom = new DOMDocument(); @$termDom->loadHTML('<?xml encoding="UTF-8">'.$fallback);
-$termXPath = new DOMXPath($termDom);
-$expect($termXPath->query('//*[@data-term-form]//select')->length === 2, 'Term form asks only for academic year and semester');
-$expect($termXPath->query('//*[@data-term-form]//input[not(@type="hidden")]')->length === 0, 'Term form has no editable date fields or confirmation checkbox');
-$expect($termXPath->query('//*[@data-term-start or @data-term-end]')->length === 2, 'Official dates are displayed as read-only outputs');
-$expect($termXPath->query('//select[@name="academic_year"]/option')->length === 2 && !str_contains($fallback,'value="2570"'), 'Only supported calendar years are selectable');
-
-$context = '/?page=schedule&room_id=2&week=2026-08-31&weekend=1&q=TEST';
-[$status, , $location] = $request($context, ['action'=>'create_term', 'csrf_token'=>$csrf($fallback), 'term_starts_on'=>'"><script>test</script>', 'academic_year'=>'2499']);
-$expect($status === 302 && str_contains($location, 'new_term=1'), 'Invalid form redirects back to the dialog');
-$expect(str_contains($location, 'room_id=2') && str_contains($location, 'week=2026-08-31') && str_contains($location, 'weekend=1') && str_contains($location, 'q=TEST'), 'Validation preserves timetable filters');
-[, $invalid] = $request('/' . $location);
-$expect(str_contains($invalid, 'data-term-error-summary'), 'Server errors have a dedicated dialog summary');
-$expect(!str_contains($invalid, '<script>test</script>') && !str_contains($invalid,'name="term_starts_on"'), 'Obsolete date input is discarded rather than rendered or retained');
-$expect(!str_contains($invalid, 'value="2499"') && str_contains($invalid, 'aria-invalid="true"') && str_contains($invalid, 'กรุณาเลือกปีที่มีปฏิทิน'), 'Unsupported year gets an accessible error and is not added as an option');
-
-$term = ['action'=>'create_term', 'academic_year'=>'2569', 'semester'=>'2'];
-[$status, , $location] = $request($context, $term + ['csrf_token'=>$csrf($invalid)]);
-$expect($status === 302 && str_contains($location, 'term_id=') && !str_contains($location, 'new_term'), 'Success selects the new term and closes the dialog');
-[, $success] = $request('/' . $location);
-$expect(str_contains($success, 'สร้างภาคการศึกษาแล้ว'), 'Success feedback is visible');
-$expect(!preg_match('/<dialog[^>]+\bopen\b/', $success), 'Dialog is closed after a successful save');
-[$status, , $location] = $request($context, $term + ['csrf_token'=>$csrf($success)]);
-[, $duplicate] = $request('/' . $location);
-$expect($status === 302 && str_contains($duplicate, 'มีปีและภาคการศึกษานี้อยู่แล้ว'), 'Repeated save returns a duplicate-term error');
-$duplicateDom=new DOMDocument(); @$duplicateDom->loadHTML('<?xml encoding="UTF-8">'.$duplicate); $duplicateXPath=new DOMXPath($duplicateDom);
-$expect($duplicateXPath->query('//*[@id="schedule-editor"]//*[@data-schedule-errors]')->length===0, 'Term errors do not leak into the schedule form');
-require dirname(__DIR__) . '/src/bootstrap.php';
-$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === 1, 'Duplicate save does not create a second record');
-$savedTerm = db()->query('SELECT * FROM academic_terms LIMIT 1')->fetch();
-$expect($savedTerm['starts_on'] === '2026-11-16' && $savedTerm['ends_on'] === '2027-03-21', 'HTTP creation derives the official dates with no date submission');
-$forgedTerm = ['action'=>'create_term','academic_year'=>'2569','semester'=>'1','term_starts_on'=>'1900-01-01','term_ends_on'=>'1900-02-01','dates_confirmed'=>'1','csrf_token'=>$csrf($duplicate)];
+$expect(str_contains($empty,'data-horizontal-timetable') && !str_contains($empty,'data-open-term'),'Fresh timetable is usable with no separate add-term action');
+[, $fallback]=$request('/?page=schedule&new_once=1');
+$termDom=new DOMDocument(); @$termDom->loadHTML('<?xml encoding="UTF-8">'.$fallback); $termXPath=new DOMXPath($termDom);
+$expect($termXPath->query('//*[@id="term-settings"]')->length===0 && $termXPath->query('//*[@data-one-off-form]//select[@name="academic_year"]/option')->length===2,'Year and semester live inside the class form; no term-creation dialog');
+$expect($termXPath->query('//*[@data-one-off-form]//select[@name="semester"]/option')->length===3,'All three semester choices are available without creating them first');
+$expect($termXPath->query('//*[@data-class-picker]')->length===1 && $termXPath->query('//*[@data-class-slots]')->length===1,'One graphical picker supports multiple selected ranges');
+$context='/?page=schedule';
+$term=['action'=>'create_term','academic_year'=>'2569','semester'=>'2'];
+$request($context,$term+['csrf_token'=>$csrf($fallback)]);
+$request($context,$term+['csrf_token'=>$csrf($fallback)]);
+require dirname(__DIR__).'/src/bootstrap.php';
+$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn()===1,'Legacy term endpoint still prevents duplicates');
+$savedTerm=db()->query('SELECT * FROM academic_terms LIMIT 1')->fetch();
+$expect($savedTerm['starts_on']==='2026-11-16' && $savedTerm['ends_on']==='2027-03-21','Official dates are preserved');
+$forgedTerm=['action'=>'create_term','academic_year'=>'2569','semester'=>'1','term_starts_on'=>'1900-01-01','term_ends_on'=>'1900-02-01','csrf_token'=>$csrf($fallback)];
 $request($context,$forgedTerm);
-$forgedSaved = db()->query("SELECT starts_on,ends_on FROM academic_terms WHERE academic_year=2569 AND semester='1'")->fetch();
-$expect($forgedSaved['starts_on'] === '2026-06-22' && $forgedSaved['ends_on'] === '2026-10-25', 'HTTP tampering cannot override fixed term dates');
-$countBeforeUnknown = (int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn();
+$forgedSaved=db()->query("SELECT starts_on,ends_on FROM academic_terms WHERE academic_year=2569 AND semester='1'")->fetch();
+$expect($forgedSaved['starts_on']==='2026-06-22' && $forgedSaved['ends_on']==='2026-10-25','Tampered dates cannot override the catalog');
+$countBeforeUnknown=(int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn();
 $request($context,array_replace($forgedTerm,['academic_year'=>'2570']));
-$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === $countBeforeUnknown, 'HTTP manual confirmation cannot unlock an unpublished year');
-echo "Term dialog HTTP checks passed: $checks\n";
+$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn()===$countBeforeUnknown,'Unpublished years cannot be invented');
 
 // Same disposable database: verify calendar, report rendering and CSV as one flow.
 $roomId = (int)db()->query('SELECT id FROM rooms ORDER BY id LIMIT 1')->fetchColumn();
@@ -188,7 +165,7 @@ echo "Authenticated planning HTTP checks passed: $checks\n";
 [, $login]=$request('/?page=login');
 $request('/?page=login',['action'=>'login','csrf_token'=>$csrf($login),'email'=>'admin@example.invalid','password'=>getenv('LUMS_ADMIN_PASSWORD')]);
 [, $classHub]=$request('/?page=classes&new_once=1');
-$expect(str_contains($classHub,'data-one-off-form') && str_contains($classHub,'data-once-range') && str_contains($classHub,'name="checkin_mode"'),'Class creation uses the shared multi-hour form and explicit admission policy');
+$expect(str_contains($classHub,'data-one-off-form') && str_contains($classHub,'data-class-slots') && str_contains($classHub,'ก่อนเวลาเรียน 10 นาที'),'Class creation uses the shared multi-hour form and explicit admission policy');
 [,,$oldError]=$request('/?page=classes',['action'=>'create_class','csrf_token'=>$csrf($classHub),'course_code'=>'KEEPME','course_name'=>'สมมติ','starts_at'=>'2030-05-06T09:00','ends_at'=>'2030-05-06T13:00']);
 [, $oldDraft]=$request('/'.$oldError);
 $expect(str_contains($oldError,'new_once=1') && str_contains($oldDraft,'value="KEEPME"') && str_contains($oldDraft,'data-once-errors'),'Old creation endpoint retains failed input in the shared dialog');
@@ -335,3 +312,58 @@ $oneFromUnified=array_replace($collision,['class_mode'=>'once','class_date'=>'20
 $expect($status===302 && str_contains($onceUnifiedLocation,'class_id=') && (int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='UNIFIEDONCE'")->fetchColumn()===1,'The same form can recover by switching to once and create a real four-hour class');
 $expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='UNIFIEDONCE'")->fetchColumn()===0,'Once mode never creates an accidental semester reservation');
 echo "Unified class creation checks passed: $checks\n";
+
+// New multi-slot creation and change APIs: exercise real CSRF, replay and redirects.
+[, $batchForm]=$request('/?page=classes&new_once=1');
+preg_match('/name="one_off_request" value="([a-f0-9]+)"/',$batchForm,$batchToken);
+$batchInput=['action'=>'create_class_batch','csrf_token'=>$csrf($batchForm),'one_off_request'=>$batchToken[1],'class_mode'=>'semester','academic_year'=>2569,'semester'=>'summer','lecturer_user_id'=>$adminId,'course_code'=>'HTTPBATCH','course_name'=>'ทดสอบหลายช่วงผ่าน HTTP','slots_json'=>json_encode([
+    ['room_id'=>$roomId,'day_of_week'=>3,'starts_time'=>'08:00','ends_time'=>'11:00'],
+    ['room_id'=>$otherRoom,'day_of_week'=>5,'starts_time'=>'13:00','ends_time'=>'16:00'],
+])];
+$beforeBatch=(int)db()->query('SELECT COUNT(*) FROM class_sessions')->fetchColumn();
+[$status,$body]=$request('/?api=class-batch-preview',$batchInput);
+$expect($status===200 && json_decode($body,true)['count']===18,'Batch HTTP preview expands two ranges across the locked summer term');
+$expect((int)db()->query('SELECT COUNT(*) FROM class_sessions')->fetchColumn()===$beforeBatch,'Batch preview never writes classes');
+[$status]=$request('/?api=class-batch-preview',array_replace($batchInput,['csrf_token'=>'invalid']));
+$expect($status===403,'Batch preview enforces CSRF');
+[$status,,$batchLocation]=$request('/?page=classes',$batchInput);
+$expect($status===302 && str_contains($batchLocation,'series=') && str_contains($batchLocation,'range=all'),'Batch save opens the whole created series');
+$httpClasses=db()->query("SELECT * FROM class_sessions WHERE course_code='HTTPBATCH' ORDER BY starts_at")->fetchAll();
+$expect(count($httpClasses)===18 && count(array_unique(array_column($httpClasses,'qr_token')))===18,'One submit creates all 18 lessons and distinct QR tokens');
+$request('/?page=classes',$batchInput);
+$expect((int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='HTTPBATCH'")->fetchColumn()===18,'Replayed batch form cannot create duplicates');
+[, $batchList]=$request('/'.$batchLocation);
+$expect(str_contains($batchList,'พบ 18 คลาส') && !str_contains($batchList,'name="term_starts_on"'),'Series view shows actual lessons without term setup');
+$sample=$httpClasses[0];
+[, $waiting]=$request('/?page=student-checkin&token='.$sample['qr_token']);
+$expect(str_contains($waiting,'ก่อนเรียน 10 นาที') && !str_contains($waiting,'name="student_code"'),'Future QR explains automatic admission and does not expose the submission form');
+[, $changePage]=$request('/?page=classes&edit_class='.$sample['id']);
+$expect(str_contains($changePage,'class-change-dialog') && str_contains($changePage,'ทั้งชุดที่สร้างพร้อมกัน'),'Class change dialog offers series scope');
+$changeInput=['action'=>'change_class_batch','csrf_token'=>$csrf($changePage),'class_id'=>$sample['id'],'operation'=>'cancel','scope'=>'once','revision'=>$sample['updated_at']];
+[$status,$body]=$request('/?api=class-change-preview',$changeInput);
+$expect($status===200 && json_decode($body,true)['count']===1 && json_decode($body,true)['lessons'][0]['start']==='08:00','Cancellation preview uses local lesson time and exact affected count');
+[$status]=$request('/?api=class-change-preview',array_replace($changeInput,['csrf_token'=>'invalid']));
+$expect($status===403,'Change preview enforces CSRF');
+[$status]=$request('/?page=classes',$changeInput);
+$expect($status===302 && (int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='HTTPBATCH' AND status='cancelled'")->fetchColumn()===1,'Cancel only this lesson preserves every other date');
+[, $cancelledStudent]=$request('/?page=student-checkin&token='.$sample['qr_token']);
+$expect(!str_contains($cancelledStudent,'name="student_code"'),'Cancelled class cannot receive student check-ins');
+$adminCookies=$cookies; $cookies=[];
+[$status]=$request('/?api=class-change-preview',$changeInput);
+$expect($status===401,'Anonymous callers cannot preview changes to a series');
+$cookies=$adminCookies;
+$expect((int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='CSVGOOD'")->fetchColumn()>0,'CSV import materializes scheduled classes with unique QR');
+$expect((int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='CSVCONFLICT'")->fetchColumn()===0,'Failed CSV import leaves no partial lessons');
+echo "Multi-slot HTTP checks passed: $checks\n";
+
+// A new semester can also be imported without pre-creating an empty term.
+$catalogBefore=(int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn();
+$catalogCsv=$csvHeader."\nCATALOGCSV,ทดสอบนำเข้าภาคใหม่,1,".db()->query('SELECT code FROM rooms WHERE id='.$roomId)->fetchColumn().",admin@example.invalid,1,17:00,18:00,,,ทดสอบสมมติ";
+$catalogImport=['action'=>'import_schedule','academic_term_key'=>'2568/summer','csrf_token'=>$csrf($batchForm)];
+$request('/?page=schedule',$catalogImport,$catalogCsv."\n".str_replace('CATALOGCSV','CATALOGBAD',explode("\n",$catalogCsv)[1]));
+$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn()===$catalogBefore && (int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code LIKE 'CATALOG%'")->fetchColumn()===0,'New-term CSV conflict rolls back the term, plans and lessons together');
+[$status,,$catalogLocation]=$request('/?page=schedule',$catalogImport,$catalogCsv);
+$catalogTerm=(int)db()->query("SELECT id FROM academic_terms WHERE academic_year=2568 AND semester='summer'")->fetchColumn();
+$expect($status===302 && $catalogTerm>0 && str_contains($catalogLocation,'term_id='.$catalogTerm),'CSV creates its selected catalog term only together with valid classes');
+$expect((int)db()->query("SELECT COUNT(*) FROM class_sessions WHERE course_code='CATALOGCSV' AND admission_lead_minutes=10")->fetchColumn()>1,'Catalog import creates all weekly QRs with the ten-minute policy');
+echo "Catalog import checks passed: $checks\n";

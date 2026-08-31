@@ -1,0 +1,43 @@
+.class-create-dialog { width: min(1120px,calc(100% - 32px)); }
+.class-create-dialog [hidden] { display: none !important; }
+.class-create-dialog .class-mode-options input { min-height: 18px; width: 18px; }
+.class-create-context { grid-template-columns: repeat(3,minmax(0,1fr)); }
+.class-course-fields { grid-template-columns: 1fr 2fr 1fr; margin: 16px 0 24px; }
+.class-picker-heading { display: flex; justify-content: space-between; gap: 24px; align-items: end; margin-bottom: 12px; }
+.class-picker-heading h3, .class-slot-list h3 { font-size: 16px; }
+.class-picker-heading p { margin: 4px 0; color: var(--muted); font-size: 13px; }
+.class-picker-heading .field { width: 320px; flex-shrink: 0; }
+.class-picker-scroll { overflow: auto; border: 1px solid var(--border); border-radius: 6px; }
+.class-picker-grid { min-width: 840px; }
+.class-picker-row { display: grid; grid-template-columns: 88px repeat(12,minmax(0,1fr)); }
+.class-picker-row > * { border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); min-width: 0; }
+.class-picker-row:last-child > * { border-bottom: 0; }
+.class-picker-row > :last-child { border-right: 0; }
+.class-picker-row strong, .class-picker-row span { padding: 8px 4px; text-align: center; font-size: 12px; background: var(--surface-subtle); }
+.class-picker-row button { min-height: 44px; background: var(--surface); border-left: 0; border-top: 0; color: var(--brand-700); cursor: pointer; font: inherit; font-size: 11px; }
+.class-picker-row button[aria-pressed="true"] { background: var(--brand-100); box-shadow: inset 0 0 0 1px var(--brand-600); }
+.class-picker-row button.is-pending { background: var(--brand-50); box-shadow: inset 0 0 0 2px var(--brand-600); }
+.class-picker-row button:disabled { background: var(--surface-subtle); cursor: not-allowed; }
+.class-pending-range { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin: 12px 0 24px; font-size: 13px; color: var(--muted); }
+.class-slot-row { display: grid; grid-template-columns: 1.1fr 2fr 1fr 1fr 44px; align-items: end; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--border); }
+.class-slot-list { margin-bottom: 16px; }
+.class-slot-empty { padding: 16px; margin: 0; background: var(--surface-subtle); color: var(--muted); }
+.class-create-footer .class-booking-summary { display: block; }
+.class-create-footer .is-error, .class-change-dialog .is-error { color: var(--danger); }
+.class-day-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
+.class-day-controls .search-field { flex: 1; min-width: 200px; }
+.class-list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
+.class-change-dialog { width: min(760px,calc(100% - 32px)); }
+.class-change-dialog [hidden] { display: none !important; }
+.class-create-dialog button:disabled, .class-change-dialog button:disabled { opacity: .55; cursor: not-allowed; }
+.class-create-context + .helper-text, .class-change-dialog .helper-text { margin: 12px 0 16px; }
+.class-change-dialog [data-change-fields] > .field { margin-top: 16px; }
+.class-change-preview { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--border); }
+@media (max-width: 767px) {
+  .class-create-context, .class-course-fields { grid-template-columns: 1fr; }
+  .class-picker-heading { display: block; }
+  .class-picker-heading .field { width: auto; margin-top: 12px; }
+  .class-slot-row { grid-template-columns: 1fr 1fr; }
+  .class-slot-row .icon-button { grid-column: 2; justify-self: end; }
+  .class-pending-range { align-items: start; flex-direction: column; }
+}

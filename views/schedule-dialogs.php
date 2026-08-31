@@ -22,7 +22,9 @@
             <ol class="import-steps"><li>ดาวน์โหลดไฟล์ตัวอย่างและกรอกหนึ่งรายวิชาต่อแถว</li><li>เลือกภาคการศึกษาและไฟล์ที่ต้องการนำเข้า</li><li>ระบบตรวจทั้งชุด หากมีข้อผิดพลาดจะไม่บันทึกบางส่วน</li></ol>
             <a class="button button--secondary" href="?download=schedule-template"><span data-icon="download"></span>ดาวน์โหลด CSV ตัวอย่าง</a>
             <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="import_schedule">
-            <label class="field"><span>ภาคการศึกษา</span><select name="term_id" required><?php foreach ($terms as $item): ?><option value="<?= $item['id'] ?>" <?= $item['id']===$termId ? 'selected' : '' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
+            <?php $importKey=$_SESSION['import_term_key'] ?? ($term ? $term['academic_year'].'/'.$term['semester'] : ''); unset($_SESSION['import_term_key']); ?>
+            <label class="field"><span>ภาคการศึกษาที่นำเข้า</span><select name="academic_term_key" required><?php foreach (nu_academic_presets() as $year=>$catalogYear): foreach ($catalogYear['terms'] as $semester=>$dates): $key=$year.'/'.$semester; ?><option value="<?= e($key) ?>" <?= $key===$importKey?'selected':'' ?>><?= e(academic_term_code($year,(string)$semester).' · '.thai_date_label($dates['start']).' – '.thai_date_label($dates['end'])) ?></option><?php endforeach; endforeach; ?></select></label>
+            <p class="helper-text">เลือกได้ทันที ไม่ต้องเพิ่มภาคการศึกษาก่อน · ไม่เกิน 100 แถว · สร้าง QR แยกทุกคลาสและเปิดรับก่อนเรียน 10 นาที</p>
             <label class="field"><span>ไฟล์ตารางเรียน (.csv สูงสุด 2 MB)</span><input type="file" name="schedule_file" accept=".csv,text/csv" required></label>
         </div>
         <footer class="term-dialog__actions"><a href="<?= e($scheduleReturnUrl) ?>" class="button button--secondary" data-close-schedule>ยกเลิก</a><button class="button button--primary" type="submit">ตรวจสอบและนำเข้า</button></footer>

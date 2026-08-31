@@ -484,6 +484,9 @@ function ensure_sqlite_academic_columns(PDO $connection): void
         'schedule_id' => 'ALTER TABLE class_sessions ADD COLUMN schedule_id INTEGER NULL',
         'scheduled_date' => 'ALTER TABLE class_sessions ADD COLUMN scheduled_date TEXT NULL',
         'checkin_mode' => "ALTER TABLE class_sessions ADD COLUMN checkin_mode TEXT NOT NULL DEFAULT 'scheduled' CHECK (checkin_mode IN ('scheduled', 'manual'))",
+        'admission_lead_minutes' => 'ALTER TABLE class_sessions ADD COLUMN admission_lead_minutes INTEGER NOT NULL DEFAULT 0',
+        'series_key' => 'ALTER TABLE class_sessions ADD COLUMN series_key TEXT NULL',
+        'term_id' => 'ALTER TABLE class_sessions ADD COLUMN term_id INTEGER NULL REFERENCES academic_terms(id)',
     ];
 
     foreach ($additions as $name => $sql) {
@@ -492,6 +495,7 @@ function ensure_sqlite_academic_columns(PDO $connection): void
         }
     }
     $connection->exec('CREATE UNIQUE INDEX IF NOT EXISTS uq_class_schedule_date ON class_sessions(schedule_id, scheduled_date) WHERE schedule_id IS NOT NULL');
+    $connection->exec('CREATE INDEX IF NOT EXISTS idx_class_series ON class_sessions(series_key, starts_at)');
 }
 
 function seed_academic_schedule_data(PDO $connection): bool

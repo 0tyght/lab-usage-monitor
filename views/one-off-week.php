@@ -4,7 +4,7 @@ $onceTo=$weekStart->modify('+'.($dayCount-1).' days')->format('Y-m-d');
 $onceWeek=[];
 $onceLoadError=false;
 try {
-    $onceWeek=array_values(array_filter(room_usage_events($onceFrom,$onceTo,['source'=>'classes','room_id'=>$roomFilter,'q'=>trim((string)($_GET['q'] ?? ''))]),static fn(array $r): bool => !$r['schedule_id']));
+    $onceWeek=array_values(array_filter(room_usage_events($onceFrom,$onceTo,['source'=>'classes','room_id'=>$roomFilter,'q'=>trim((string)($_GET['q'] ?? ''))]),static fn(array $r): bool => !$r['schedule_id'] && !$r['term_id']));
 } catch (Throwable) { $onceLoadError=true; }
 ?>
 <section class="one-off-week" aria-labelledby="one-off-week-title">

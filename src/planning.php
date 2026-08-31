@@ -65,7 +65,7 @@ function room_usage_events(string $from, string $to, array $filters = []): array
     }
     // Apply room/term filters after reconciliation so a moved occurrence does
     // not leave a phantom reservation in its original room.
-    $query = db()->prepare('SELECT cs.*, r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name, s.term_id,
+    $query = db()->prepare('SELECT cs.*, r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name, COALESCE(cs.term_id,s.term_id) AS term_id,
         (SELECT COUNT(*) FROM attendance_records ar WHERE ar.class_session_id=cs.id) AS attendance_count
         FROM class_sessions cs JOIN rooms r ON r.id=cs.room_id JOIN users u ON u.id=cs.lecturer_user_id
         LEFT JOIN course_schedules s ON s.id=cs.schedule_id WHERE ' . implode(' AND ', $where));
@@ -79,7 +79,7 @@ function room_usage_events(string $from, string $to, array $filters = []): array
         if ($row['status'] === 'cancelled' || $row['starts_at'] >= $params[':end'] || $row['ends_at'] <= $params[':start']) continue;
         $events[] = [
             'key'=>'class-' . $row['id'], 'class_id'=>(int)$row['id'], 'schedule_id'=>(int)$row['schedule_id'],
-            'term_id'=>(int)$row['term_id'], 'room_id'=>(int)$row['room_id'], 'room_code'=>$row['room_code'], 'room_name'=>$row['room_name'],
+            'term_id'=>(int)$row['term_id'], 'series_key'=>$row['series_key'] ?? null, 'room_id'=>(int)$row['room_id'], 'room_code'=>$row['room_code'], 'room_name'=>$row['room_name'],
             'course_code'=>$row['course_code'], 'course_name'=>$row['course_name'], 'section'=>$row['section'] ?? '', 'lecturer_name'=>$row['lecturer_name'],
             'starts_at'=>$row['starts_at'], 'ends_at'=>$row['ends_at'], 'status'=>$row['status'], 'display_status'=>class_checkin_status($row), 'source'=>'classes', 'attendance_count'=>(int)$row['attendance_count'],
         ];
@@ -154,7 +154,7 @@ function room_usage_slices(array $events, string $from, string $to, string $time
 
 function usage_source_label(array $event): string
 {
-    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) ? 'คลาสเรียนแบบครั้งเดียว · ' : '') . match ($event['display_status'] ?? class_checkin_status($event)) {
+    return $event['source'] === 'schedule' ? 'ตารางตามแผน' : (empty($event['schedule_id']) && empty($event['term_id']) ? 'คลาสเรียนแบบครั้งเดียว · ' : 'คลาสทั้งภาคเรียน · ') . match ($event['display_status'] ?? class_checkin_status($event)) {
         'draft'=>'คลาสแบบร่าง', 'closed'=>'คลาสปิดรับแล้ว',
         'overdue'=>'สิ้นสุดเวลารับอัตโนมัติ', 'scheduled'=>'คลาสรอเวลาเริ่ม', 'cancelled'=>'คลาสยกเลิก', default=>'คลาสเปิดลงชื่อ',
     };

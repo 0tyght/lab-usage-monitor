@@ -5,7 +5,7 @@ $termInput = $_SESSION['term_old_input'] ?? [];
 if (!$termInput) $termInput = array_intersect_key($_GET, array_flip(['academic_year','semester']));
 unset($_SESSION['term_form_errors'], $_SESSION['term_old_input']);
 $defaultTerm = current_academic_term();
-$term = get_academic_term((int)($_GET['term_id'] ?? $defaultTerm['id'] ?? 0)) ?? $defaultTerm;
+$term = isset($_GET['term_id']) && (int)$_GET['term_id']===0 ? null : (get_academic_term((int)($_GET['term_id'] ?? $defaultTerm['id'] ?? 0)) ?? $defaultTerm);
 $termId = (int)($term['id'] ?? 0);
 $rooms = list_rooms();
 $lecturers = list_lecturers();
@@ -32,7 +32,7 @@ $loadError = false;
 $events = [];
 try {
     // Reconcile linked classes/cancellations first; standalone classes do not belong to a term.
-    $events = array_values(array_filter(room_usage_events($weekFrom, $weekTo, ['room_id'=>$roomFilter,'q'=>$search]), static fn(array $event): bool => !$event['schedule_id'] || $event['term_id'] === $termId));
+    $events = array_values(array_filter(room_usage_events($weekFrom, $weekTo, ['room_id'=>$roomFilter,'q'=>$search]), static fn(array $event): bool => !$termId || !$event['term_id'] || $event['term_id'] === $termId));
 } catch (Throwable) { $loadError = true; }
 $timeline = timetable_layout(room_usage_slices($events, $weekFrom, $weekTo));
 $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends_on']);
@@ -44,18 +44,15 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
             <a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>สร้างคลาสเรียน</a>
         </div>
     </header>
-    <?php if (!$term): ?>
-        <section class="empty-feature"><span data-icon="calendar-days"></span><h2>ยังไม่มีภาคการศึกษา</h2><p>เพิ่มภาคการศึกษาก่อนจัดตารางซ้ำรายสัปดาห์ หรือใช้ “สร้างคลาสเรียน” สำหรับวันเดียว</p><?php if ($user['role']==='admin'): ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษาแรก</a><?php endif; ?></section>
-    <?php else: ?>
         <form method="get" class="schedule-filter" data-timetable-filter>
             <input type="hidden" name="page" value="schedule"><input type="hidden" name="week" value="<?= e($weekFrom) ?>"><input type="hidden" name="weekend" value="<?= $showWeekend ? '1' : '0' ?>">
-            <label class="field"><span>ภาคการศึกษา</span><select name="term_id"><?php foreach ($terms as $item): ?><option value="<?= $item['id'] ?>" <?= $item['id']===$termId ? 'selected' : '' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
+            <label class="field"><span>ภาคการศึกษา</span><select name="term_id"><option value="0">ทุกภาคการศึกษา</option><?php foreach ($terms as $item): ?><option value="<?= $item['id'] ?>" data-academic-year="<?= $item['academic_year'] ?>" data-semester="<?= e($item['semester']) ?>" <?= $item['id']===$termId ? 'selected' : '' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
             <label class="field"><span>ห้องปฏิบัติการ</span><select name="room_id"><option value="">ทุกห้อง</option><?php foreach ($rooms as $room): ?><option value="<?= $room['id'] ?>" <?= $roomFilter===(string)$room['id'] ? 'selected' : '' ?>><?= e($room['code'].' · '.$room['name']) ?></option><?php endforeach; ?></select></label>
             <label class="field"><span>ค้นหาตาราง</span><input name="q" value="<?= e($search) ?>" placeholder="รหัสวิชา ชื่อวิชา หรือผู้สอน"></label>
             <button type="submit" class="button button--secondary">แสดงตาราง</button>
         </form>
-        <div class="schedule-term-line"><p><strong><?= e($term['name']) ?></strong> · <?= e(thai_date_label($term['starts_on']).' – '.thai_date_label($term['ends_on'])) ?> <span>รวมช่วงสอบ</span></p>
-            <?php if ($user['role']==='admin'): ?><div><a href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษา</a><a href="<?= e($scheduleReturnUrl.'&import=1') ?>" data-open-schedule="schedule-import" aria-haspopup="dialog" aria-controls="schedule-import"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a></div><?php endif; ?>
+        <div class="schedule-term-line"><p><?php if ($term): ?><strong><?= e($term['name']) ?></strong> · <?= e(thai_date_label($term['starts_on']).' – '.thai_date_label($term['ends_on'])) ?><?php else: ?>เลือกภาคเรียนได้ขณะสร้างคลาส ไม่ต้องเพิ่มภาคการศึกษาแยก<?php endif; ?></p>
+            <?php if ($user['role']==='admin'): ?><a href="<?= e($scheduleReturnUrl.'&import=1') ?>" data-open-schedule="schedule-import" aria-haspopup="dialog">นำเข้าตารางจาก CSV</a><?php endif; ?>
         </div>
         <div class="schedule-toolbar" aria-label="เปลี่ยนสัปดาห์">
             <div class="schedule-week-nav"><div class="button-group"><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>$weekStart->modify('-7 days')->format('Y-m-d')]))) ?>" aria-label="สัปดาห์ก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>week_start_date()->format('Y-m-d')]))) ?>">สัปดาห์นี้</a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>$weekStart->modify('+7 days')->format('Y-m-d')]))) ?>" aria-label="สัปดาห์ถัดไป"><span data-icon="chevron-right"></span></a></div><h2><?= e(thai_date_label($weekFrom).' – '.thai_date_label($weekTo)) ?></h2></div>
@@ -77,7 +74,7 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
                                 <div class="schedule-day-heading"><strong><?= e(thai_day_label($day)) ?></strong><span><?= e($date->format('d/m')) ?><?= $isToday ? ' · วันนี้' : '' ?></span></div>
                                 <div class="schedule-day-track" data-schedule-day="<?= $day ?>">
                                     <div class="schedule-slot-row"><?php for ($minute=$timeline['start']; $minute<$timeline['end']; $minute+=60): $time=sprintf('%02d:00',$minute/60); ?><button type="button" class="schedule-empty-slot" data-slot-day="<?= $day ?>" data-slot-start="<?= $time ?>" aria-pressed="false" aria-label="เลือก<?= e(thai_day_label($day)) ?> เวลา <?= $time ?>"></button><?php endfor; ?></div>
-                                    <?php foreach ($dayLayout['events'] as $event): $once=!$event['schedule_id']; $eventUrl=$event['class_id'] ? '?page=classes&class_id='.$event['class_id'] : '?'.http_build_query($scheduleQueryBase+['selected'=>$event['schedule_id']]); $eventLabel=$event['course_code'].' · '.$event['course_name'].' · '.$event['room_code'].' · '.$event['start_time'].'–'.$event['end_time'].' · '.$event['lecturer_name'].' · '.($once ? 'คลาสเรียนแบบครั้งเดียว' : 'ตารางรายสัปดาห์'); ?>
+                                    <?php foreach ($dayLayout['events'] as $event): $once=!$event['term_id']; $eventUrl=$event['class_id'] ? '?page=classes&class_id='.$event['class_id'] : '?'.http_build_query($scheduleQueryBase+['selected'=>$event['schedule_id']]); $eventLabel=$event['course_code'].' · '.$event['course_name'].' · '.$event['room_code'].' · '.$event['start_time'].'–'.$event['end_time'].' · '.$event['lecturer_name'].' · '.($once ? 'คลาสเรียนแบบครั้งเดียว' : 'ตารางรายสัปดาห์'); ?>
                                         <a class="schedule-block <?= $once ? 'schedule-block--once' : '' ?> <?= $selectedSchedule && $event['schedule_id']===$selectedSchedule['id'] ? 'is-selected' : '' ?>" style="--event-left:<?= e($event['left']) ?>%;--event-width:<?= e($event['width']) ?>%;--event-lane:<?= $event['lane'] ?>" href="<?= e($eventUrl) ?>" <?= $event['class_id'] ? 'data-class-id="'.(int)$event['class_id'].'"' : '' ?> aria-label="<?= e($eventLabel) ?>" title="<?= e($eventLabel) ?>"><strong><?= e($event['course_code']) ?> <span><?= e($event['room_code']) ?></span></strong><span><?= e($event['course_name']) ?></span><small><?= e($event['start_time'].'–'.$event['end_time']) ?><?= $once ? ' · ครั้งเดียว' : '' ?></small></a>
                                     <?php endforeach; ?>
                                 </div>
@@ -90,8 +87,6 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
             <p class="schedule-footer-note">ช่องว่างยังไม่ยืนยันว่าจองได้ ระบบตรวจห้องและผู้สอนตลอดช่วงที่ใช้ตารางก่อนบันทึก<?= $user['role']==='lecturer' ? ' · แสดงเฉพาะรายการของคุณ' : '' ?></p>
         </section>
         <?php require __DIR__.'/schedule-dialogs.php'; ?>
-    <?php endif; ?>
     <details class="schedule-once-details"><summary>คลาสเรียนแบบครั้งเดียวในสัปดาห์นี้ <span>ดูรายการและ QR</span></summary><?php require __DIR__.'/one-off-week.php'; ?></details>
-    <?php if ($user['role']==='admin') require __DIR__.'/term-dialog.php'; ?>
 </section>
 <script src="<?= e(asset_url('timetable.js')) ?>" defer></script>

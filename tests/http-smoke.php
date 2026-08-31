@@ -55,7 +55,7 @@ if (getenv('LUMS_GATEWAY_ID')) {
 [$status, $body] = $request('/');
 $expect($status === 200 && str_contains($body, 'name="password"'), 'Public entry point renders the login form');
 $expect(!str_contains($body, 'admin123') && !str_contains($body, 'admin@lums.local'), 'Production login does not expose demo credentials');
-foreach (['app.css', 'app.js', 'planning.css', 'planning.js', 'one-off.js', 'class-panel.css', 'class-panel.js', 'timetable.css', 'timetable.js', 'favicon.svg', 'qrcode.min.js'] as $asset) {
+foreach (['app.css', 'app.js', 'planning.css', 'planning.js', 'one-off.js', 'class-panel.css', 'class-panel.js', 'class-batch.css', 'class-change.js', 'timetable.css', 'timetable.js', 'favicon.svg', 'qrcode.min.js'] as $asset) {
     [$status, $body] = $request('/assets/' . $asset);
     $expect($status === 200 && strlen($body) > 0, "Static asset is available: $asset");
 }

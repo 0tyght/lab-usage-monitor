@@ -102,7 +102,11 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 
 ## Content style
 
-- Academic term creation asks only for academic year and semester. Display locked dates as read-only text from the official NU regular-undergraduate calendar; never show editable dates or a confirmation checkbox. Offer only catalog years, and derive dates server-side. Keep the official source link secondary to the dates.
+- Do not expose a separate add-academic-term workflow. Select academic year and semester inside `สร้างคลาสเรียน`; create the term record only when saving actual lessons. Display locked official NU regular-undergraduate dates; offer only catalog years and derive dates server-side.
+- One creation may contain multiple weekday/date/time/room ranges. Keep time horizontal and days vertical, with editable selected rows and one atomic save. Preserve all weekly dates including holidays and exams; lack of attendance is valid monitoring data, not a reason to delete a class.
+- Materialize every lesson with its own QR, automatically accepting check-in 10 minutes before class until its end. The owner can close early. Show scheduled, accepting, automatically ended and manually closed distinctly. Existing records retain their original admission policy.
+- Default the class list to today, with week/all, date, room, search, admission status, sorting and pagination. QR, attendance, printing and editing belong to the class, not a separate QR menu.
+- Editing/cancelling offers this lesson, this and following, or the whole created series. Preview affected count and room/teacher conflicts. Preserve classes already started, with attendance, or already cancelled. Never delete history; audit before and after values.
 - Canonical action: `สร้างคลาสเรียน` for both one-date and full-term creation. Use the same label on entry buttons, dialog title and submit. Explain the different saved results within the dialog, not with competing entry buttons.
 - Use `ครั้งเดียว` and `ทั้งภาคเรียน` as creation modes; use `ตารางรายสัปดาห์` only as a description of recurrence. Reserve `คาบ` for the duration unit in reports, never as an alternative creation action.
 - Use direct Thai labels: `สแกน QR Code`, `บันทึกการเข้าใช้`, `ลองอีกครั้ง`, `ดาวน์โหลดรายงาน`.

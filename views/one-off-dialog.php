@@ -1,70 +1,58 @@
 <?php
-$onceErrors = $_SESSION['one_off_errors'] ?? [];
-$onceInput = $_SESSION['one_off_input'] ?? [];
-// Old bookmarked recurring-editor links and failed legacy submissions use the same dialog.
-if (isset($_GET['new_schedule'])) {
-    $onceErrors = $formErrors ?? [];
-    $onceInput = array_replace($oldInput ?? [], ['class_mode'=>'semester']);
+$onceErrors=$_SESSION['one_off_errors'] ?? [];
+$onceInput=$_SESSION['one_off_input'] ?? [];
+if (isset($_GET['new_schedule']) && !empty($formErrors)) {
+    $onceErrors=$formErrors;
+    $legacyTerm=get_academic_term((int)($oldInput['term_id'] ?? 0));
+    $onceInput=array_replace($oldInput ?? [],['class_mode'=>'semester','academic_year'=>$legacyTerm['academic_year'] ?? 2569,'semester'=>$legacyTerm['semester'] ?? '1']);
+    $onceInput['slots_json']=json_encode([array_intersect_key($onceInput,array_flip(['room_id','day_of_week','starts_time','ends_time']))]);
 }
 unset($_SESSION['one_off_errors'],$_SESSION['one_off_input']);
-$onceRequest = $onceInput['one_off_request'] ?? '';
-if (!isset($_SESSION['one_off_requests'][$onceRequest])) {
-    $onceRequest = bin2hex(random_bytes(16));
-    $_SESSION['one_off_requests'][$onceRequest] = 0;
-    $_SESSION['one_off_requests'] = array_slice($_SESSION['one_off_requests'],-20,null,true);
+$onceRequest=$onceInput['one_off_request'] ?? '';
+if (!isset($_SESSION['one_off_requests'][$onceRequest]) || $_SESSION['one_off_requests'][$onceRequest]!==0) {
+    $onceRequest=bin2hex(random_bytes(16)); $_SESSION['one_off_requests'][$onceRequest]=0;
+    $_SESSION['one_off_requests']=array_slice($_SESSION['one_off_requests'],-20,null,true);
 }
-$onceTerms = list_academic_terms();
-$onceValues = array_replace(['class_mode'=>isset($_GET['new_schedule'])?'semester':'once', 'term_id'=>$_GET['term_id'] ?? current_academic_term()['id'] ?? '', 'day_of_week'=>date('N'), 'room_id'=>$_GET['room_id'] ?? '', 'lecturer_user_id'=>$user['id'], 'class_date'=>$_GET['once_date'] ?? date('Y-m-d'), 'starts_time'=>'09:00', 'ends_time'=>'10:00', 'course_code'=>'', 'course_name'=>'', 'section'=>'', 'notes'=>'', 'checkin_mode'=>'scheduled'],$onceInput);
-$onceRooms = array_filter(list_rooms(),static fn(array $r): bool => $r['status']==='available');
+$catalog=nu_academic_presets();
+$contextTerm=get_academic_term((int)($_GET['term_id'] ?? 0));
+$onceValues=array_replace(['class_mode'=>'once','academic_year'=>$contextTerm['academic_year'] ?? array_key_first($catalog),'semester'=>$contextTerm['semester'] ?? '1','class_date'=>$_GET['once_date'] ?? date('Y-m-d'),'room_id'=>$_GET['room_id'] ?? '','lecturer_user_id'=>$user['id'],'course_code'=>'','course_name'=>'','section'=>'','notes'=>'','slots_json'=>'[]'],$onceInput);
+$onceRooms=array_values(array_filter(list_rooms(),static fn($r)=>$r['status']==='available'));
 ?>
-<dialog id="one-off-dialog" class="term-dialog one-off-dialog" aria-labelledby="one-off-title" aria-describedby="one-off-description" <?= isset($_GET['new_once']) || isset($_GET['new_schedule']) || $onceErrors?'open':'' ?>>
-    <header class="term-dialog__header"><div><h2 id="one-off-title">สร้างคลาสเรียน</h2><p id="one-off-description">เลือกรูปแบบ แล้วระบุห้อง รายวิชา และเวลาใช้ห้อง</p></div><a class="icon-button" href="<?= e($oneOffReturnUrl) ?>" data-close-once aria-label="ปิดหน้าต่างสร้างคลาสเรียน"><span data-icon="x"></span></a></header>
+<dialog id="one-off-dialog" class="term-dialog class-create-dialog" aria-labelledby="one-off-title" <?= isset($_GET['new_once']) || isset($_GET['new_schedule']) || isset($_GET['new_term']) || $onceErrors?'open':'' ?>>
+    <header class="term-dialog__header"><div><h2 id="one-off-title">สร้างคลาสเรียน</h2><p>เลือกได้หลายช่วงเวลาและหลายห้อง แล้วบันทึกพร้อมกันครั้งเดียว</p></div><a href="<?= e($oneOffReturnUrl) ?>" class="icon-button" data-close-once aria-label="ปิดหน้าต่างสร้างคลาสเรียน"><span data-icon="x"></span></a></header>
     <form method="post" action="<?= e($oneOffReturnUrl) ?>" data-one-off-form novalidate>
-        <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_one_off"><input type="hidden" name="one_off_request" value="<?= e($onceRequest) ?>">
+        <input type="hidden" name="action" value="create_class_batch"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="one_off_request" value="<?= e($onceRequest) ?>"><input type="hidden" name="slots_json" value="<?= e($onceValues['slots_json']) ?>">
         <div class="term-dialog__body">
             <fieldset class="class-mode-picker"><legend>รูปแบบคลาสเรียน</legend><div class="class-mode-options">
-                <label><input type="radio" name="class_mode" value="once" <?= $onceValues['class_mode']!=='semester'?'checked':'' ?>><span><strong>ครั้งเดียว</strong><small>ใช้ห้องเฉพาะวันที่เลือก</small></span></label>
-                <label><input type="radio" name="class_mode" value="semester" <?= $onceValues['class_mode']==='semester'?'checked':'' ?>><span><strong>ทั้งภาคเรียน</strong><small>วันและเวลาเดิมทุกสัปดาห์</small></span></label>
+                <label><input type="radio" name="class_mode" value="once" <?= $onceValues['class_mode']!=='semester'?'checked':'' ?>><span><strong>ครั้งเดียว</strong><small>เลือกวันที่และช่วงเวลาที่ใช้ห้อง</small></span></label>
+                <label><input type="radio" name="class_mode" value="semester" <?= $onceValues['class_mode']==='semester'?'checked':'' ?>><span><strong>ทั้งภาคเรียน</strong><small>ทำซ้ำทุกสัปดาห์ในช่วงที่เลือก</small></span></label>
             </div></fieldset>
-            <?php if ($onceErrors): ?><div class="alert alert--error" role="alert" tabindex="-1" data-once-errors><strong>ยังไม่ได้สร้างคลาสเรียน</strong><span><?= e(implode(' ',array_values($onceErrors))) ?></span></div><?php endif; ?>
-            <div data-class-mode-panel="semester" class="class-semester-fields">
-                <div class="form-grid">
-                    <label class="field"><span>ภาคการศึกษา</span><select name="term_id" required><option value="">เลือกภาคการศึกษา</option><?php foreach ($onceTerms as $item): ?><option value="<?= (int)$item['id'] ?>" data-start="<?= e($item['starts_on']) ?>" data-end="<?= e($item['ends_on']) ?>" <?= (string)$onceValues['term_id']===(string)$item['id']?'selected':'' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label>
-                    <label class="field"><span>วันเรียนทุกสัปดาห์</span><select name="day_of_week" required><?php for ($day=1;$day<=7;$day++): ?><option value="<?= $day ?>" <?= (int)$onceValues['day_of_week']===$day?'selected':'' ?>><?= e(thai_day_label($day)) ?></option><?php endfor; ?></select></label>
-                </div>
-                <?php if (!$onceTerms): ?><p class="alert alert--error">ยังไม่มีภาคการศึกษา <?= $user['role']==='admin'?'กรุณาเพิ่มภาคการศึกษาที่หน้าตารางเรียนก่อน':'กรุณาให้ผู้ดูแลเพิ่มภาคการศึกษาก่อน' ?> หรือเลือกสร้างแบบครั้งเดียวได้ทันที</p><?php endif; ?>
-                <p class="helper-text" data-class-term-dates>ใช้วันเริ่ม–สิ้นสุดตามภาคการศึกษาที่เลือก ไม่ต้องกรอกวันที่เอง</p>
+            <?php if ($onceErrors): ?><div class="alert alert--error" data-once-errors role="alert" tabindex="-1"><strong>ยังไม่ได้สร้างคลาสเรียน</strong><span><?= e(implode(' ',array_values($onceErrors))) ?></span></div><?php endif; ?>
+            <div class="form-grid class-create-context">
+                <label class="field" data-class-mode-panel="semester"><span>ปีการศึกษา (พ.ศ.)</span><select name="academic_year"><?php foreach ($catalog as $year=>$item): ?><option value="<?= $year ?>" <?= (int)$onceValues['academic_year']===$year?'selected':'' ?>><?= $year ?></option><?php endforeach; ?></select></label>
+                <label class="field" data-class-mode-panel="semester"><span>ภาคการศึกษา</span><select name="semester"><?php foreach (semester_labels() as $value=>$label): ?><option value="<?= e($value) ?>" <?= (string)$onceValues['semester']===(string)$value?'selected':'' ?>><?= e($label) ?></option><?php endforeach; ?></select></label>
+                <label class="field" data-class-mode-panel="once"><span>วันที่สำหรับช่วงใหม่</span><input type="date" name="class_date" value="<?= e($onceValues['class_date']) ?>"></label>
+                <?php if ($user['role']==='admin'): ?><label class="field"><span>ผู้สอน</span><select name="lecturer_user_id" required><?php foreach (list_lecturers() as $lecturer): ?><option value="<?= $lecturer['id'] ?>" <?= (int)$onceValues['lecturer_user_id']===$lecturer['id']?'selected':'' ?>><?= e($lecturer['full_name']) ?></option><?php endforeach; ?></select></label><?php else: ?><input type="hidden" name="lecturer_user_id" value="<?= $user['id'] ?>"><?php endif; ?>
             </div>
-            <div class="form-grid">
-                <?php
-                $onceFields = ['class_date'=>['วันที่ใช้ห้อง','date',true], 'room_id'=>['ห้องปฏิบัติการ','select',true], 'lecturer_user_id'=>['ผู้สอน','select',true], 'course_code'=>['รหัสรายวิชา','text',true], 'course_name'=>['ชื่อวิชา / กิจกรรม','text',true], 'section'=>['กลุ่มเรียน (ไม่บังคับ)','text',false]];
-                foreach ($onceFields as $name=>[$label,$type,$required]):
-                    if ($name==='lecturer_user_id' && $user['role']!=='admin'): ?><input type="hidden" name="lecturer_user_id" value="<?= (int)$user['id'] ?>"><?php continue; endif;
-                ?>
-                    <div class="field" <?= $name==='class_date'?'data-class-mode-panel="once"':'' ?>><label for="once-<?= $name ?>"><?= e($label) ?></label>
-                    <?php if ($type==='select'): ?><select id="once-<?= $name ?>" name="<?= $name ?>" required aria-describedby="once-error-<?= $name ?>"><option value="">เลือก<?= e($label) ?></option><?php foreach ($name==='room_id'?$onceRooms:list_lecturers() as $option): ?><option value="<?= $option['id'] ?>" <?= (string)$onceValues[$name]===(string)$option['id']?'selected':'' ?>><?= e($name==='room_id'?$option['code'].' — '.$option['name']:$option['full_name']) ?></option><?php endforeach; ?></select>
-                    <?php else: ?><input id="once-<?= $name ?>" name="<?= $name ?>" type="<?= $type ?>" value="<?= e($onceValues[$name]) ?>" <?= $required?'required':'' ?> <?= $name==='course_code'?'pattern="[A-Za-z0-9._-]{2,30}" maxlength="30"':($name==='course_name'?'minlength="2" maxlength="150"':($name==='section'?'maxlength="30"':'')) ?> aria-describedby="once-error-<?= $name ?>"><?php endif; ?>
-                    <span class="field-error" id="once-error-<?= $name ?>" <?= isset($onceErrors[$name])?'':'hidden' ?>><?= e($onceErrors[$name] ?? '') ?></span></div>
-                <?php endforeach; ?>
+            <p class="helper-text" data-class-term-dates data-class-mode-panel="semester"></p>
+            <div class="form-grid class-course-fields">
+                <label class="field"><span>รหัสรายวิชา</span><input name="course_code" value="<?= e($onceValues['course_code']) ?>" pattern="[A-Za-z0-9._-]{2,30}" maxlength="30" required></label>
+                <label class="field"><span>ชื่อวิชา / กิจกรรม</span><input name="course_name" value="<?= e($onceValues['course_name']) ?>" minlength="2" maxlength="150" required></label>
+                <label class="field"><span>กลุ่มเรียน (ไม่บังคับ)</span><input name="section" value="<?= e($onceValues['section']) ?>" maxlength="30"></label>
             </div>
-            <?php if (!$onceRooms): ?><p class="alert alert--error">ยังไม่มีห้องพร้อมใช้งาน กรุณาตรวจสถานะห้องก่อนสร้างคลาสเรียน</p><?php endif; ?>
-            <div class="one-off-time-heading"><strong>เลือกช่วงเวลาได้หลายชั่วโมง</strong><small>คลิกช่องแรก แล้วคลิกช่องสุดท้ายเพื่อเลือกช่วงต่อเนื่อง หรือระบุเวลาเริ่ม–สิ้นสุดเอง</small></div>
-            <p class="inline-note" role="status" data-once-availability>เลือกห้อง วันที่ และผู้สอนเพื่อตรวจเวลาว่าง</p>
-            <div class="one-off-slots" data-once-slots aria-label="เลือกเวลาใช้ห้อง"></div>
-            <div class="one-off-range-summary"><p class="inline-note" role="status" data-once-range>เลือกเวลาเริ่มและสิ้นสุดด้านล่าง</p>
-            <button type="button" class="button button--secondary" data-once-reset-range>เริ่มเลือกช่วงใหม่</button></div>
-            <button type="button" class="button button--secondary" data-once-retry hidden>ตรวจเวลาอีกครั้ง</button>
-            <div class="form-grid">
-                <?php foreach (['starts_time'=>'เวลาเริ่ม','ends_time'=>'เวลาสิ้นสุด'] as $name=>$label): ?><div class="field"><label for="once-<?= $name ?>"><?= $label ?></label><input id="once-<?= $name ?>" type="time" name="<?= $name ?>" value="<?= e($onceValues[$name]) ?>" required aria-describedby="once-error-<?= $name ?>"><span class="field-error" id="once-error-<?= $name ?>" <?= isset($onceErrors[$name])?'':'hidden' ?>><?= e($onceErrors[$name] ?? '') ?></span></div><?php endforeach; ?>
-                <label class="field field--full" data-class-mode-panel="once"><span>การรับลงชื่อ</span><select name="checkin_mode" aria-describedby="once-mode-help"><option value="scheduled" <?= $onceValues['checkin_mode']==='scheduled'?'selected':'' ?>>รับตามเวลาเรียน และปิดอัตโนมัติเมื่อจบเวลาเรียน</option><option value="manual" <?= $onceValues['checkin_mode']==='manual'?'selected':'' ?>>เปิดรับทันทีเมื่อบันทึก จนกว่าผู้สอนกดปิดเอง</option></select></label>
-            </div>
-            <p class="helper-text" id="once-mode-help" data-class-mode-panel="once" data-once-mode-help data-local-now="<?= e(date('Y-m-d\TH:i')) ?>">คลาสเรียนที่เลือกปิดอัตโนมัติจะรับเฉพาะเวลาเรียน หากเป็นแบบร่าง ให้กดเปิดรับในหน้าคลาส ส่วนโหมดปิดเองจะเปิดรับทันทีแม้อยู่นอกเวลาเรียน</p>
+            <div class="class-picker-heading"><div><h3>เลือกช่วงเวลาใช้ห้อง</h3><p>คลิกช่องเริ่มและช่องสุดท้ายเพื่อเพิ่มหนึ่งช่วง แล้วเลือกช่วงถัดไปได้ทันที</p></div><label class="field"><span>ห้องสำหรับช่วงใหม่</span><select name="room_id"><option value="">เลือกห้องปฏิบัติการ</option><?php foreach ($onceRooms as $room): ?><option value="<?= $room['id'] ?>" <?= (int)$onceValues['room_id']===$room['id']?'selected':'' ?>><?= e($room['code'].' — '.$room['name']) ?></option><?php endforeach; ?></select></label></div>
+            <div class="class-picker-scroll" role="region" aria-label="เลือกเวลาแนวนอนและวันแนวตั้ง" tabindex="0"><div class="class-picker-grid" data-class-picker></div></div>
+            <div class="class-pending-range"><span data-pending-range>เลือกห้อง แล้วคลิกช่วงเวลาในตาราง</span><button type="button" class="button button--secondary" data-add-range disabled>เพิ่มช่วงที่เลือก</button></div>
+            <div class="section-heading"><h3>ช่วงเวลาที่เลือก <span data-slot-count>0</span></h3><span class="helper-text">แก้เวลาและห้องในแต่ละแถวได้</span></div>
+            <div class="class-slot-list" data-class-slots></div>
+            <p class="helper-text">เปิดรับลงชื่ออัตโนมัติก่อนเวลาเรียน 10 นาที ปิดเมื่อสิ้นสุดเวลาเรียน หรือเจ้าของคลาสกดปิดก่อน · QR แยกทุกคลาส</p>
             <label class="field"><span>หมายเหตุ (ไม่บังคับ)</span><textarea name="notes" rows="2" maxlength="500"><?= e($onceValues['notes']) ?></textarea></label>
-            <noscript><p>ระบบจะตรวจเวลาชนเมื่อกดบันทึก หากมีข้อผิดพลาด ข้อมูลที่กรอกจะยังอยู่</p></noscript>
+            <noscript><p class="alert alert--error">กรุณาเปิด JavaScript เพื่อเลือกช่วงเวลาและตรวจสอบตารางก่อนบันทึก</p></noscript>
         </div>
         <footer class="term-dialog__actions class-create-footer">
-            <section class="class-booking-summary" aria-label="สรุปก่อนสร้างคลาสเรียน"><strong>รายการที่จะบันทึก</strong><p data-class-booking-summary aria-live="polite">เลือกวันที่หรือภาคการศึกษา ห้อง และช่วงเวลา</p><small data-class-result-help>ระบบตรวจห้องและผู้สอนซ้ำอีกครั้งก่อนบันทึก</small></section>
-            <div class="class-create-buttons"><a class="button button--secondary" href="<?= e($oneOffReturnUrl) ?>" data-close-once>ยกเลิก</a><button class="button button--primary" type="submit" <?= !$onceRooms?'disabled':'' ?>>สร้างคลาสเรียน</button></div>
+            <div class="class-booking-summary"><strong data-class-summary>ยังไม่ได้เลือกช่วงเวลา</strong><p data-class-preview role="status">เลือกช่วงเวลาและกรอกรายวิชาให้ครบ ระบบจะตรวจทุกรายการก่อนบันทึก</p><button type="button" class="text-button" data-class-retry hidden>ตรวจสอบอีกครั้ง</button></div>
+            <div class="class-create-buttons"><a href="<?= e($oneOffReturnUrl) ?>" class="button button--secondary" data-close-once>ยกเลิก</a><button type="submit" class="button button--primary" disabled>สร้างคลาสเรียน</button></div>
         </footer>
     </form>
 </dialog>
+<script type="application/json" data-class-catalog><?= json_encode($catalog,JSON_HEX_TAG|JSON_HEX_AMP|JSON_HEX_APOS|JSON_HEX_QUOT|JSON_UNESCAPED_UNICODE) ?></script>

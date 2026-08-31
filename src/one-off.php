@@ -3,14 +3,15 @@
 declare(strict_types=1);
 
 /** Availability is deliberately anonymous: no other lecturer's course/QR data. */
-function one_off_busy_times(int $roomId, int $lecturerId, string $date): array
+function one_off_busy_times(int $roomId, int $lecturerId, string $date, array $ignoreIds = []): array
 {
     if (!valid_iso_date($date)) throw new InvalidArgumentException('กรุณาเลือกวันที่ให้ถูกต้อง');
     $tz = new DateTimeZone((string)app_config('app.timezone', 'Asia/Bangkok'));
     $day = new DateTimeImmutable($date, $tz);
     $start = $day->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
     $end = $day->modify('+1 day')->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
-    $query = db()->prepare("SELECT room_id, lecturer_user_id, starts_at, ends_at FROM class_sessions WHERE status<>'cancelled' AND (room_id=:room OR lecturer_user_id=:lecturer) AND starts_at<:end AND ends_at>:start");
+    $ignored = $ignoreIds ? ' AND id NOT IN ('.implode(',',array_map('intval',$ignoreIds)).')' : '';
+    $query = db()->prepare("SELECT room_id, lecturer_user_id, starts_at, ends_at FROM class_sessions WHERE status<>'cancelled' AND (room_id=:room OR lecturer_user_id=:lecturer) AND starts_at<:end AND ends_at>:start".$ignored);
     $query->execute([':room'=>$roomId, ':lecturer'=>$lecturerId, ':start'=>$start, ':end'=>$end]);
     $busy = [];
     foreach ($query->fetchAll() as $row) {
