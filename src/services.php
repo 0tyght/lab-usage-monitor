@@ -163,8 +163,12 @@ function create_academic_term(array $input): array
     if (text_length($name) < 3 || text_length($name) > 100) $errors['term_name'] = 'ชื่อภาคการศึกษาต้องมีความยาว 3–100 ตัวอักษร';
     if ($year === false || $year < 2500 || $year > 2700) $errors['academic_year'] = 'ปีการศึกษาต้องอยู่ระหว่าง 2500–2700';
     if (!in_array($semester, ['1', '2', 'summer'], true)) $errors['semester'] = 'กรุณาเลือกภาคการศึกษา';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $startsOn)) $errors['term_starts_on'] = 'กรุณาระบุวันเริ่มภาคเรียน';
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $endsOn) || $endsOn < $startsOn) $errors['term_ends_on'] = 'วันสิ้นสุดต้องอยู่หลังวันเริ่ม';
+    $validTermDate = static function (string $value): bool {
+        return preg_match('/^\d{4}-\d{2}-\d{2}$/D', $value)
+            && checkdate((int)substr($value, 5, 2), (int)substr($value, 8, 2), (int)substr($value, 0, 4));
+    };
+    if (!$validTermDate($startsOn)) $errors['term_starts_on'] = 'กรุณาระบุวันเปิดภาคที่ถูกต้อง';
+    if (!$validTermDate($endsOn) || $endsOn < $startsOn) $errors['term_ends_on'] = 'วันปิดภาคต้องเป็นวันที่ถูกต้องและไม่อยู่ก่อนวันเปิดภาค';
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูลภาคการศึกษา', 'errors' => $errors];
 
     try {

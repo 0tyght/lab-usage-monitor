@@ -222,9 +222,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_flash('success', 'สร้างภาคการศึกษาแล้ว', $result['message']);
             redirect_to('schedule', ['term_id'=>(int)$result['id']]);
         }
-        $_SESSION['form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถสร้างภาคการศึกษาได้'];
-        $_SESSION['old_input'] = $_POST;
-        redirect_to('schedule');
+        $_SESSION['term_form_errors'] = $result['errors'] ?? ['form'=>$result['message'] ?? 'ไม่สามารถสร้างภาคการศึกษาได้'];
+        $_SESSION['term_old_input'] = array_intersect_key($_POST, array_flip(['term_name', 'academic_year', 'semester', 'term_starts_on', 'term_ends_on']));
+        $context = array_intersect_key($_GET, array_flip(['term_id', 'room_id', 'week', 'weekend', 'q', 'selected']));
+        redirect_to('schedule', $context + ['new_term'=>1]);
     }
 
     if ($action === 'create_schedule') {
@@ -475,7 +476,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <a class="button button--primary button--compact" href="<?= $page === 'schedule' ? '#schedule-form' : '?page=classes#new-class' ?>"><span data-icon="plus" aria-hidden="true"></span><?= $page === 'schedule' ? 'เพิ่มตาราง' : 'สร้างคลาส' ?></a>
+                <?php if ($page !== 'schedule' || current_academic_term()): ?><a class="button button--primary button--compact" href="<?= $page === 'schedule' ? '#schedule-form' : '?page=classes#new-class' ?>"><span data-icon="plus" aria-hidden="true"></span><?= $page === 'schedule' ? 'เพิ่มตาราง' : 'สร้างคลาส' ?></a><?php endif; ?>
             </header>
             <main id="main-content" class="content">
                 <?php if ($flash): ?>
@@ -530,6 +531,12 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                 <?php elseif ($page === 'schedule'): ?>
                     <?php
                     $terms = list_academic_terms();
+                    $termErrors = $_SESSION['term_form_errors'] ?? [];
+                    $termInput = $_SESSION['term_old_input'] ?? [];
+                    unset($_SESSION['term_form_errors'], $_SESSION['term_old_input']);
+                    $termContext = array_intersect_key($_GET, array_flip(['term_id', 'room_id', 'week', 'weekend', 'q', 'selected']));
+                    $termReturnUrl = '?' . http_build_query(['page'=>'schedule'] + $termContext);
+                    $termOpenUrl = $termReturnUrl . '&new_term=1#term-settings';
                     $defaultTerm = current_academic_term();
                     $termId = (int)($_GET['term_id'] ?? $defaultTerm['id'] ?? 0);
                     $term = get_academic_term($termId) ?? $defaultTerm;
@@ -553,9 +560,9 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         return $schedule['day_of_week'] <= $dayCount && $date >= $schedule['active_from'] && $date <= $schedule['active_until'];
                     }));
                     ?>
-                    <header class="page-header"><div><p class="eyebrow">วางแผนการใช้ห้องทั้งเทอม</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>ดูตารางรายสัปดาห์ คลิกช่องว่างเพื่อเพิ่มคาบ และตรวจการชนกันก่อนบันทึก</p></div><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a></header>
+                    <header class="page-header"><div><p class="eyebrow">วางแผนการใช้ห้องทั้งเทอม</p><h1>ตารางเรียนห้องปฏิบัติการ</h1><p>ดูตารางรายสัปดาห์ คลิกช่องว่างเพื่อเพิ่มคาบ และตรวจการชนกันก่อนบันทึก</p></div><?php if ($user['role']==='admin'): ?><div class="schedule-header-actions"><?php if ($term): ?><a class="button button--secondary" href="#import-schedule"><span data-icon="upload"></span>นำเข้าทั้งเทอม</a><?php endif; ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings"><span data-icon="plus"></span>เพิ่มภาคการศึกษา</a></div><?php endif; ?></header>
                     <?php if (!$term): ?>
-                        <section class="empty-feature"><span data-icon="calendar-days"></span><h2>ยังไม่มีภาคการศึกษา</h2><p>ผู้ดูแลระบบต้องสร้างภาคการศึกษาก่อนเริ่มจัดตารางเรียน</p><a class="button button--primary" href="#term-settings">สร้างภาคการศึกษา</a></section>
+                        <section class="empty-feature"><span data-icon="calendar-days"></span><h2>ยังไม่มีภาคการศึกษา</h2><p>ผู้ดูแลระบบต้องสร้างภาคการศึกษาก่อนเริ่มจัดตารางเรียน</p><?php if ($user['role']==='admin'): ?><a class="button button--primary" href="<?= e($termOpenUrl) ?>" data-open-term aria-haspopup="dialog" aria-controls="term-settings">เพิ่มภาคการศึกษาแรก</a><?php endif; ?></section>
                     <?php else: ?>
                         <form method="get" class="filter-bar schedule-filter">
                             <input type="hidden" name="page" value="schedule">
@@ -613,6 +620,7 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         </div>
                     <?php endif; ?>
 
+                    <?php if ($term): ?>
                     <div class="schedule-tools-layout">
                         <section id="schedule-form" class="form-panel" aria-labelledby="schedule-form-title">
                             <div class="section-heading"><div><p class="eyebrow">เพิ่มทีละรายการ</p><h2 id="schedule-form-title">เพิ่มตารางเรียน</h2><p>เลือกช่องในตารางด้านบน หรือกรอกวันและเวลาด้วยตนเอง</p></div></div>
@@ -636,9 +644,49 @@ $navPage = $page === 'class-detail' ? 'classes' : $page;
                         </section>
                         <div class="schedule-admin-stack">
                             <?php if($user['role']==='admin'): ?><section id="import-schedule" class="form-panel"><div class="section-heading"><div><p class="eyebrow">งานจำนวนมาก</p><h2>นำเข้าตารางทั้งเทอม</h2><p>รองรับ CSV UTF-8 และตรวจการชนกันก่อนนำเข้าทั้งชุด</p></div></div><?php if($formErrors && isset($_GET['import'])): ?><div class="alert alert--error" role="alert"><strong>นำเข้าไม่ได้</strong><span><?= e(implode(' ',array_values($formErrors))) ?></span></div><?php endif; ?><ol class="import-steps"><li>ดาวน์โหลดไฟล์ตัวอย่าง</li><li>กรอกหนึ่งรายวิชาต่อหนึ่งแถว</li><li>เลือกภาคเรียนและอัปโหลด</li></ol><a class="button button--secondary button--block" href="?download=schedule-template"><span data-icon="download"></span>ดาวน์โหลด CSV ตัวอย่าง</a><form method="post" enctype="multipart/form-data" class="form-stack import-form"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="import_schedule"><label class="field"><span>ภาคการศึกษา</span><select name="term_id" required><?php foreach($terms as $item): ?><option value="<?= e($item['id']) ?>" <?= $item['id']===$termId?'selected':'' ?>><?= e($item['name']) ?></option><?php endforeach; ?></select></label><label class="field"><span>ไฟล์ตารางเรียน (.csv สูงสุด 2 MB)</span><input type="file" name="schedule_file" accept=".csv,text/csv" required></label><button class="button button--primary button--block" type="submit">ตรวจสอบและนำเข้า</button></form></section><?php endif; ?>
-                            <?php if($user['role']==='admin'): ?><details id="term-settings" class="management-details"><summary><span><strong>จัดการภาคการศึกษา</strong><small>สร้างปีหรือเทอมใหม่</small></span><span data-icon="chevron-down"></span></summary><form method="post" class="form-grid details-form"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="create_term"><label class="field field--full"><span>ชื่อภาคการศึกษา</span><input name="term_name" placeholder="เช่น ภาคการศึกษาที่ 2/2569" required></label><label class="field"><span>ปีการศึกษา</span><input type="number" name="academic_year" min="2500" max="2700" value="<?= e(date('Y')+543) ?>" required></label><label class="field"><span>ภาค</span><select name="semester"><option value="1">ภาค 1</option><option value="2">ภาค 2</option><option value="summer">ภาคฤดูร้อน</option></select></label><label class="field"><span>วันเปิดภาค</span><input type="date" name="term_starts_on" required></label><label class="field"><span>วันปิดภาค</span><input type="date" name="term_ends_on" required></label><div class="form-actions field--full"><button class="button button--primary" type="submit">สร้างภาคการศึกษา</button></div></form></details><?php endif; ?>
                         </div>
                     </div>
+                    <?php endif; ?>
+                    <?php if ($user['role']==='admin'): ?>
+                        <dialog id="term-settings" class="term-dialog" aria-labelledby="term-dialog-title" aria-describedby="term-dialog-description" <?= isset($_GET['new_term']) || $termErrors ? 'open' : '' ?>>
+                            <header class="term-dialog__header">
+                                <div><h2 id="term-dialog-title">เพิ่มภาคการศึกษา</h2><p id="term-dialog-description">กำหนดชื่อและช่วงวันที่สำหรับจัดตารางเรียนทั้งเทอม</p></div>
+                                <a class="icon-button" href="<?= e($termReturnUrl) ?>" data-close-term aria-label="ปิดหน้าต่างเพิ่มภาคการศึกษา"><span data-icon="x"></span></a>
+                            </header>
+                            <form method="post" action="<?= e($termReturnUrl) ?>" data-term-form novalidate>
+                                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                                <input type="hidden" name="action" value="create_term">
+                                <div class="term-dialog__body">
+                                    <?php if ($termErrors): ?><div class="alert alert--error term-error-summary" role="alert" tabindex="-1" data-term-error-summary><strong>ยังไม่ได้บันทึกภาคการศึกษา</strong><span><?= e($termErrors['form'] ?? 'กรุณาแก้ไขข้อมูลที่ระบุด้านล่าง แล้วบันทึกอีกครั้ง') ?></span></div><?php endif; ?>
+                                    <p class="term-required-note">กรอกข้อมูลให้ครบทุกช่อง · ปีการศึกษาใช้ พ.ศ.</p>
+                                    <div class="form-grid">
+                                        <?php
+                                        $termFields = [
+                                            'term_name'=>['label'=>'ชื่อภาคการศึกษา', 'type'=>'text', 'value'=>'', 'attributes'=>'minlength="3" maxlength="100" placeholder="เช่น ภาคการศึกษาที่ 2/2569"', 'full'=>true],
+                                            'academic_year'=>['label'=>'ปีการศึกษา (พ.ศ.)', 'type'=>'number', 'value'=>date('Y')+543, 'attributes'=>'min="2500" max="2700" step="1"'],
+                                            'semester'=>['label'=>'ภาคการศึกษา', 'type'=>'select', 'value'=>'1'],
+                                            'term_starts_on'=>['label'=>'วันเปิดภาค', 'type'=>'date', 'value'=>'', 'attributes'=>''],
+                                            'term_ends_on'=>['label'=>'วันปิดภาค', 'type'=>'date', 'value'=>'', 'attributes'=>''],
+                                        ];
+                                        foreach ($termFields as $fieldName=>$field): $error = $termErrors[$fieldName] ?? ''; ?>
+                                            <div class="field <?= !empty($field['full']) ? 'field--full' : '' ?>">
+                                                <label for="term-<?= e($fieldName) ?>"><?= e($field['label']) ?></label>
+                                                <?php if ($field['type']==='select'): ?>
+                                                    <select id="term-<?= e($fieldName) ?>" name="<?= e($fieldName) ?>" required aria-describedby="error-<?= e($fieldName) ?>" <?= $error ? 'aria-invalid="true"' : '' ?>>
+                                                        <?php foreach (['1'=>'ภาค 1', '2'=>'ภาค 2', 'summer'=>'ภาคฤดูร้อน'] as $value=>$label): ?><option value="<?= e($value) ?>" <?= (string)($termInput[$fieldName] ?? $field['value'])===(string)$value ? 'selected' : '' ?>><?= e($label) ?></option><?php endforeach; ?>
+                                                    </select>
+                                                <?php else: ?>
+                                                    <input id="term-<?= e($fieldName) ?>" type="<?= e($field['type']) ?>" name="<?= e($fieldName) ?>" value="<?= e($termInput[$fieldName] ?? $field['value']) ?>" <?= $field['attributes'] ?> required aria-describedby="error-<?= e($fieldName) ?>" <?= $error ? 'aria-invalid="true"' : '' ?>>
+                                                <?php endif; ?>
+                                                <span class="field-error" id="error-<?= e($fieldName) ?>" <?= $error ? '' : 'hidden' ?>><?= e($error) ?></span>
+                                            </div>
+                                        <?php endforeach; ?>
+                                    </div>
+                                </div>
+                                <footer class="term-dialog__actions"><a class="button button--secondary" href="<?= e($termReturnUrl) ?>" data-close-term>ยกเลิก</a><button class="button button--primary" type="submit">บันทึกภาคการศึกษา</button></footer>
+                            </form>
+                        </dialog>
+                    <?php endif; ?>
 
                 <?php elseif ($page === 'classes'): ?>
                     <?php

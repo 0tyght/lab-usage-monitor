@@ -519,6 +519,103 @@
     });
   }
 
+  function initTermDialog() {
+    const dialog = q("#term-settings");
+    if (!dialog || typeof dialog.showModal !== "function") return;
+    const form = q("[data-term-form]", dialog);
+    const triggers = qa("[data-open-term]");
+    let opener = triggers[0];
+    const fields = qa("input[required], select[required]", form);
+    const startsOn = q('[name="term_starts_on"]', form);
+    const endsOn = q('[name="term_ends_on"]', form);
+
+    const open = () => {
+      if (dialog.open) return;
+      dialog.showModal();
+      document.body.classList.add("term-dialog-open");
+      (q("[data-term-error-summary]", dialog) || fields[0]).focus();
+    };
+    triggers.forEach((trigger) => {
+      trigger.addEventListener("click", (event) => {
+        event.preventDefault();
+        opener = trigger;
+        open();
+      });
+    });
+    qa("[data-close-term]", dialog).forEach((button) => {
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        if (form.dataset.submitting !== "true") dialog.close();
+      });
+    });
+    dialog.addEventListener("cancel", (event) => {
+      if (form.dataset.submitting === "true") event.preventDefault();
+    });
+    dialog.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        if (form.dataset.submitting !== "true") dialog.close();
+      }
+      if (event.key === "Tab") {
+        const controls = qa('a[href], button:not(:disabled), input:not([type="hidden"]):not(:disabled), select:not(:disabled)', dialog);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+    });
+    dialog.addEventListener("close", () => {
+      document.body.classList.remove("term-dialog-open");
+      opener?.focus({ preventScroll: true });
+      // Remove the server's reopen marker without losing timetable filters.
+      const url = new URL(window.location.href);
+      if (url.searchParams.has("new_term") || url.hash === "#term-settings") {
+        url.searchParams.delete("new_term");
+        if (url.hash === "#term-settings") url.hash = "";
+        window.history.replaceState(null, "", url);
+      }
+    });
+
+    const validate = (field) => {
+      field.setCustomValidity("");
+      let message = "";
+      if (!field.value.trim()) message = "กรุณากรอกข้อมูลช่องนี้";
+      else if (field.name === "term_name" && (Array.from(field.value.trim()).length < 3 || Array.from(field.value.trim()).length > 100)) message = "ชื่อภาคการศึกษาต้องมีความยาว 3–100 ตัวอักษร";
+      else if (field.name === "academic_year" && !field.checkValidity()) message = "ปีการศึกษาต้องเป็นจำนวนเต็มระหว่าง 2500–2700 พ.ศ.";
+      else if (field === endsOn && startsOn.value && endsOn.value < startsOn.value) message = "วันปิดภาคต้องไม่อยู่ก่อนวันเปิดภาค";
+      field.setCustomValidity(message);
+      const error = document.getElementById(`error-${field.name}`);
+      error.textContent = message;
+      error.hidden = !message;
+      field.setAttribute("aria-invalid", String(Boolean(message)));
+      return !message;
+    };
+    fields.forEach((field) => {
+      field.addEventListener("input", () => {
+        validate(field);
+        if (field === startsOn && endsOn.value) validate(endsOn);
+      });
+    });
+    // Runs before the shared submit handler, which handles busy/duplicate submits.
+    form.addEventListener("submit", (event) => {
+      const valid = fields.map(validate).every(Boolean);
+      if (!valid) {
+        event.preventDefault();
+        q('[aria-invalid="true"]', form)?.focus();
+      }
+    });
+    // Server validation and the no-JavaScript link render an open nonmodal dialog.
+    if (dialog.open || window.location.hash === "#term-settings") {
+      dialog.removeAttribute("open");
+      open();
+    }
+  }
+
   function initSchedulePicker() {
     const form = q("[data-schedule-form]");
     if (!form) return;
@@ -582,6 +679,7 @@
     initQrScanner();
     initGeneratedQrCodes();
     initCopyButtons();
+    initTermDialog();
     initSchedulePicker();
   }
 

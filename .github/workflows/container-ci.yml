@@ -56,6 +56,7 @@ jobs:
             lums-ci:${{ github.sha }}
           trap 'docker logs lums-http-check; docker rm -f lums-http-check' EXIT
           docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/http-smoke.php
+          docker exec -e LUMS_HTTP_TEST=1 lums-http-check php tests/term-dialog-http.php
           docker exec lums-http-check php scripts/online-preflight.php
           if docker exec -e LUMS_SECURE_COOKIES=false lums-http-check php scripts/online-preflight.php; then
             echo 'Unsafe online configuration was accepted'
