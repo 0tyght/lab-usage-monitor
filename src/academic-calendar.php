@@ -17,7 +17,16 @@ function nu_academic_presets(): array
 {
     // Undergraduate regular program only. No guessed dates for other years.
     // Inclusive end dates are the day before the announced semester break.
-    return [2568=>[
+    return [2569=>[
+        'source'=>'https://reg6.nu.ac.th/registrar/calendar.asp?schedulegroupid=1000&acadyear=2569&semester=1',
+        'source_label'=>'ปฏิทิน ม.นเรศวร ปี 2569 · ปริญญาตรี ภาคปกติ',
+        'checked_on'=>'2026-08-31',
+        'terms'=>[
+            '1'=>['start'=>'2026-06-22', 'end'=>'2026-10-25'],
+            '2'=>['start'=>'2026-11-16', 'end'=>'2027-03-21', 'source'=>'https://reg6.nu.ac.th/registrar/calendar.asp?schedulegroupid=1000&acadyear=2569&semester=2'],
+            'summer'=>['start'=>'2027-03-29', 'end'=>'2027-05-30', 'source'=>'https://reg6.nu.ac.th/registrar/calendar.asp?schedulegroupid=1000&acadyear=2569&semester=3'],
+        ],
+    ], 2568=>[
         'source'=>'https://reg6.nu.ac.th/publish/NUREG_calendar2568_U20250408.pdf',
         'source_label'=>'ม.นเรศวร ปี 2568 · ปริญญาตรี ภาคปกติ · หน้า 3',
         'checked_on'=>'2026-08-31',

@@ -55,6 +55,12 @@ $expect(!str_contains($empty, 'data-schedule-form'), 'No unusable schedule form 
 $expect(str_contains($empty, 'data-open-term'), 'Empty-term state offers the popup action');
 [, $fallback] = $request('/?page=schedule&new_term=1');
 $expect((bool)preg_match('/<dialog[^>]+\bopen\b/', $fallback), 'Direct link opens the form without JavaScript');
+$termDom = new DOMDocument(); @$termDom->loadHTML('<?xml encoding="UTF-8">'.$fallback);
+$termXPath = new DOMXPath($termDom);
+$expect($termXPath->query('//*[@data-term-form]//select')->length === 2, 'Term form asks only for academic year and semester');
+$expect($termXPath->query('//*[@data-term-form]//input[not(@type="hidden")]')->length === 0, 'Term form has no editable date fields or confirmation checkbox');
+$expect($termXPath->query('//*[@data-term-start or @data-term-end]')->length === 2, 'Official dates are displayed as read-only outputs');
+$expect($termXPath->query('//select[@name="academic_year"]/option')->length === 2 && !str_contains($fallback,'value="2570"'), 'Only supported calendar years are selectable');
 
 $context = '/?page=schedule&room_id=2&week=2026-08-31&weekend=1&q=TEST';
 [$status, , $location] = $request($context, ['action'=>'create_term', 'csrf_token'=>$csrf($fallback), 'term_starts_on'=>'"><script>test</script>', 'academic_year'=>'2499']);
@@ -62,10 +68,10 @@ $expect($status === 302 && str_contains($location, 'new_term=1'), 'Invalid form 
 $expect(str_contains($location, 'room_id=2') && str_contains($location, 'week=2026-08-31') && str_contains($location, 'weekend=1') && str_contains($location, 'q=TEST'), 'Validation preserves timetable filters');
 [, $invalid] = $request('/' . $location);
 $expect(str_contains($invalid, 'data-term-error-summary'), 'Server errors have a dedicated dialog summary');
-$expect(str_contains($invalid, '&lt;script&gt;test&lt;/script&gt;') && !str_contains($invalid, '<script>test</script>'), 'Submitted draft is retained and safely escaped');
-$expect(str_contains($invalid, 'value="2499"') && str_contains($invalid, 'aria-invalid="true"'), 'Invalid fields retain their values and accessible error state');
+$expect(!str_contains($invalid, '<script>test</script>') && !str_contains($invalid,'name="term_starts_on"'), 'Obsolete date input is discarded rather than rendered or retained');
+$expect(!str_contains($invalid, 'value="2499"') && str_contains($invalid, 'aria-invalid="true"') && str_contains($invalid, 'กรุณาเลือกปีที่มีปฏิทิน'), 'Unsupported year gets an accessible error and is not added as an option');
 
-$term = ['action'=>'create_term', 'academic_year'=>'2569', 'semester'=>'2', 'term_starts_on'=>'2026-11-01', 'term_ends_on'=>'2027-03-31', 'dates_confirmed'=>'1'];
+$term = ['action'=>'create_term', 'academic_year'=>'2569', 'semester'=>'2'];
 [$status, , $location] = $request($context, $term + ['csrf_token'=>$csrf($invalid)]);
 $expect($status === 302 && str_contains($location, 'term_id=') && !str_contains($location, 'new_term'), 'Success selects the new term and closes the dialog');
 [, $success] = $request('/' . $location);
@@ -77,16 +83,25 @@ $expect($status === 302 && str_contains($duplicate, 'มีปีและภา
 $expect(!preg_match('/id="schedule-form".*?alert--error/s', strstr($duplicate, '<div class="schedule-admin-stack">', true)), 'Term errors do not leak into the schedule form');
 require dirname(__DIR__) . '/src/bootstrap.php';
 $expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === 1, 'Duplicate save does not create a second record');
+$savedTerm = db()->query('SELECT * FROM academic_terms LIMIT 1')->fetch();
+$expect($savedTerm['starts_on'] === '2026-11-16' && $savedTerm['ends_on'] === '2027-03-21', 'HTTP creation derives the official dates with no date submission');
+$forgedTerm = ['action'=>'create_term','academic_year'=>'2569','semester'=>'1','term_starts_on'=>'1900-01-01','term_ends_on'=>'1900-02-01','dates_confirmed'=>'1','csrf_token'=>$csrf($duplicate)];
+$request($context,$forgedTerm);
+$forgedSaved = db()->query("SELECT starts_on,ends_on FROM academic_terms WHERE academic_year=2569 AND semester='1'")->fetch();
+$expect($forgedSaved['starts_on'] === '2026-06-22' && $forgedSaved['ends_on'] === '2026-10-25', 'HTTP tampering cannot override fixed term dates');
+$countBeforeUnknown = (int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn();
+$request($context,array_replace($forgedTerm,['academic_year'=>'2570']));
+$expect((int)db()->query('SELECT COUNT(*) FROM academic_terms')->fetchColumn() === $countBeforeUnknown, 'HTTP manual confirmation cannot unlock an unpublished year');
 echo "Term dialog HTTP checks passed: $checks\n";
 
 // Same disposable database: verify calendar, report rendering and CSV as one flow.
 $roomId = (int)db()->query('SELECT id FROM rooms ORDER BY id LIMIT 1')->fetchColumn();
 $adminId = (int)db()->query("SELECT id FROM users WHERE email='admin@example.invalid'")->fetchColumn();
-$termId = (int)db()->query('SELECT id FROM academic_terms LIMIT 1')->fetchColumn();
-$fixture = db()->prepare("INSERT INTO course_schedules (term_id,room_id,lecturer_user_id,course_code,course_name,day_of_week,starts_time,ends_time,active_from,active_until,created_at,updated_at) VALUES (?,?,?,'HTTP101',?,1,'09:00','11:00','2026-11-01','2026-11-30',?,?)");
+$termId = (int)$savedTerm['id'];
+$fixture = db()->prepare("INSERT INTO course_schedules (term_id,room_id,lecturer_user_id,course_code,course_name,day_of_week,starts_time,ends_time,active_from,active_until,created_at,updated_at) VALUES (?,?,?,'HTTP101',?,1,'09:00','11:00','2026-11-16','2026-11-30',?,?)");
 $fixture->execute([$termId, $roomId, $adminId, 'ทดสอบรายงานสมมติ', utc_now(), utc_now()]);
-[, $calendar] = $request('/?page=calendar&month=2026-11&date=2026-11-02&term_id='.$termId);
-$expect(str_contains($calendar, 'data-calendar-day="2026-11-02"') && str_contains($calendar, 'ทดสอบรายงานสมมติ'), 'Calendar includes weekly occurrences and daily details');
+[, $calendar] = $request('/?page=calendar&month=2026-11&date=2026-11-16&term_id='.$termId);
+$expect(str_contains($calendar, 'data-calendar-day="2026-11-16"') && str_contains($calendar, 'ทดสอบรายงานสมมติ'), 'Calendar includes weekly occurrences and daily details');
 $expect((bool)preg_match('/<dialog[^>]+\bopen\b/', $calendar), 'Daily timetable has a server-rendered popup fallback');
 $expect(!str_contains($calendar, 'qr_token') && !str_contains($calendar, 'password_hash'), 'Calendar payload excludes QR secrets and credentials');
 $filters = ['date_from'=>'2026-11-02','date_to'=>'2026-11-30','room_id'=>$roomId,'term_id'=>$termId,'source'=>'all','time_from'=>'09:30','time_to'=>'10:30','unit'=>'periods','period_minutes'=>50,'group'=>'detail','q'=>'HTTP101','sort'=>'desc'];
@@ -100,7 +115,7 @@ foreach ($xpath->query('//table[contains(@class,"report-data-table")]/tbody/tr')
     foreach ($xpath->query('./td', $tr) as $td) $row[] = trim($td->textContent);
     $uiRows[] = $row;
 }
-$expect(count($uiRows) === 5 && $uiRows[0][0] === '2026-11-30', 'Report finds five Mondays and respects descending order');
+$expect(count($uiRows) === 3 && $uiRows[0][0] === '2026-11-30', 'Report finds the three Mondays within the official term and respects descending order');
 $expect($uiRows[0][1] === '09:30' && $uiRows[0][2] === '10:30' && $uiRows[0][9] === '1.20', 'Report clips time and calculates equivalent periods');
 [$status, $csv] = $request('/?download=report-csv&'.http_build_query($filters));
 $lines = array_map('str_getcsv', explode("\n", trim(substr($csv,3))));
@@ -216,7 +231,9 @@ $importTerm=(int)db()->query("SELECT id FROM academic_terms WHERE academic_year=
 $importData=['action'=>'import_schedule','term_id'=>$importTerm,'csrf_token'=>$csrf($scheduleHtml)];
 $csvHeader='course_code,course_name,section,room_code,lecturer_email,day_of_week,starts_time,ends_time,active_from,active_until,notes';
 $roomCode=db()->query('SELECT code FROM rooms WHERE id='.$roomId)->fetchColumn();
-$row="CSVGOOD,สมมตินำเข้า,1,{$roomCode},admin@example.invalid,7,17:00,19:00,2026-11-01,2026-11-30,";
+$row="CSVGOOD,สมมตินำเข้า,1,{$roomCode},admin@example.invalid,7,17:00,19:00,2026-11-16,2026-11-30,";
+[,,$outsideTerm]=$request('/?page=schedule',$importData,$csvHeader."\n".str_replace('2026-11-16','2026-11-01',$row));
+$expect((int)db()->query("SELECT COUNT(*) FROM course_schedules WHERE course_code='CSVGOOD'")->fetchColumn()===0 && str_contains($outsideTerm,'page=schedule'),'CSV cannot start before the locked semester date');
 [,,$badCsv]=$request('/?page=schedule',$importData,$csvHeader."\n".$row.',extra');
 [, $badCsvHtml]=$request('/'.$badCsv);
 $expect(str_contains($badCsvHtml,'จำนวนคอลัมน์เกินหัวตาราง'),'Extra CSV columns return a readable validation error, not HTTP 500');

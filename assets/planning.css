@@ -4,6 +4,7 @@
 .term-code-preview { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 16px; padding-block: 8px; border-bottom: 1px solid var(--border); }
 .term-code-preview output { font-size: 20px; font-weight: 700; color: var(--brand-900); }
 .term-code-preview small { width: 100%; color: var(--muted); }
+.term-fixed-date output { display: block; padding-block: 8px; font-size: 16px; font-weight: 600; color: var(--brand-900); }
 .term-dialog .inline-note { margin: 0; }
 .term-dialog .helper-text { margin: 0; }
 .one-off-dialog { width: min(760px, calc(100% - 32px)); }

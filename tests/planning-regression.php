@@ -7,6 +7,8 @@ putenv('LUMS_DB_DSN=sqlite::memory:');
 putenv('LUMS_SESSION_PATH=' . sys_get_temp_dir() . '/lums-planning-' . bin2hex(random_bytes(8)));
 require dirname(__DIR__) . '/src/bootstrap.php';
 initialize_database(db(), true);
+// Keep demo schedules, but move their synthetic term out of the official catalog.
+db()->exec("UPDATE academic_terms SET academic_year=2600, name='2600/1'");
 start_lums_session();
 $admin = (int)db()->query("SELECT id FROM users WHERE role='admin'")->fetchColumn();
 $lecturer = (int)db()->query("SELECT id FROM users WHERE role='lecturer'")->fetchColumn();
@@ -19,20 +21,40 @@ $expect = static function (bool $condition, string $message) use (&$checks): voi
 };
 $presets = nu_academic_presets();
 $expect(count($presets[2568]['terms']) === 3, 'Verified year has exactly three terms.');
-$expect(!isset($presets[2569]), 'Unverified years must not have guessed dates.');
+$expect(!isset($presets[2570]), 'Unverified years must not have guessed dates.');
 $expect($presets[2568]['terms']['1'] === ['start'=>'2025-06-23', 'end'=>'2025-10-26'], 'First-semester dates match the NU source.');
 $expect($presets[2568]['terms']['2'] === ['start'=>'2025-11-17', 'end'=>'2026-03-22'], 'Second semester crosses the Gregorian year.');
 $expect($presets[2568]['terms']['summer'] === ['start'=>'2026-03-30', 'end'=>'2026-05-31'], 'Summer stays in academic year 2568.');
 $expect(academic_term_code(2568, 'summer') === '2568/3', 'Summer displays as term 3.');
 $expect(!valid_iso_date("2030-02-30") && !valid_iso_date("2030-01-01\0"), 'Impossible dates and null bytes are rejected.');
 $expect(valid_iso_date('2028-02-29'), 'Leap day is valid.');
-$input = ['academic_year'=>2573, 'semester'=>'1', 'term_starts_on'=>'2030-01-01', 'term_ends_on'=>'2030-01-31'];
-$expect(!create_academic_term($input)['ok'], 'Manual dates require source confirmation.');
-$term = create_academic_term($input+['dates_confirmed'=>'1']);
-$expect($term['ok'], 'Confirmed manual year can be configured.');
-$expect(get_academic_term($term['id'])['name'] === '2573/1', 'No free-text term name is required.');
-$official = create_academic_term(['academic_year'=>2568, 'semester'=>'3', 'term_starts_on'=>'2026-03-30', 'term_ends_on'=>'2026-05-31']);
-$expect($official['ok'] && get_academic_term($official['id'])['semester'] === 'summer', 'Official dates need no manual confirmation and 3 maps to summer.');
+$expect($presets[2569]['terms']['1']['start'] === '2026-06-22' && $presets[2569]['terms']['1']['end'] === '2026-10-25', '2569 first term matches the official registrar.');
+$expect($presets[2569]['terms']['2']['start'] === '2026-11-16' && $presets[2569]['terms']['2']['end'] === '2027-03-21', '2569 second term matches the official registrar.');
+$expect($presets[2569]['terms']['summer']['start'] === '2027-03-29' && $presets[2569]['terms']['summer']['end'] === '2027-05-30', '2569 summer matches the official registrar.');
+$before = count(list_academic_terms());
+foreach ([2570,2573,2499,0] as $unknownYear) {
+    $unknown = create_academic_term(['academic_year'=>$unknownYear,'semester'=>'1','term_starts_on'=>'2030-01-01','term_ends_on'=>'2030-01-31','dates_confirmed'=>'1']);
+    $expect(!$unknown['ok'] && isset($unknown['errors']['academic_year']), 'Unknown calendar cannot be created even with manual confirmation.');
+}
+$expect(count(list_academic_terms()) === $before, 'Rejected calendars do not create rows.');
+foreach ($presets as $year=>$calendar) {
+    $expect(count($calendar['terms']) === 3, 'Each supported academic year has exactly three terms.');
+    $previousEnd = '';
+    foreach ($calendar['terms'] as $semester=>$dates) {
+        $expect(valid_iso_date($dates['start']) && valid_iso_date($dates['end']) && $dates['start'] <= $dates['end'] && $previousEnd < $dates['start'], 'Catalog dates are valid, ordered and nonoverlapping.');
+        $previousEnd = $dates['end'];
+        $officialInput = ['academic_year'=>$year,'semester'=>$semester === 'summer' ? '3' : (string)$semester];
+        // A stale/tampered form must never override the official dates.
+        if ($year === 2569 && (string)$semester === '1') $officialInput += ['term_starts_on'=>'1900-01-01','term_ends_on'=>'1900-02-30','dates_confirmed'=>'1'];
+        $official = create_academic_term($officialInput);
+        $expect($official['ok'], 'Year and semester alone are sufficient to save.');
+        $saved = get_academic_term($official['id']);
+        $expect($saved['starts_on'] === $dates['start'] && $saved['ends_on'] === $dates['end'], 'Stored dates are derived exclusively from the official catalog.');
+        $expect($saved['name'] === academic_term_code($year,(string)$semester) && $saved['semester'] === (string)$semester, 'Term code is generated and 3 maps to summer.');
+    }
+}
+require __DIR__.'/fixtures/academic-term.php';
+$term = fixture_academic_term('2030-01-01','2030-01-31');
 $rooms = list_rooms();
 $room1 = $rooms[0]['id']; $room2 = $rooms[1]['id'];
 $schedule = create_course_schedule(['term_id'=>$term['id'], 'room_id'=>$room1, 'lecturer_user_id'=>$admin, 'course_code'=>'TEST101', 'course_name'=>'ห้องทดลองข้อมูลสมมติ', 'day_of_week'=>1, 'starts_time'=>'08:30', 'ends_time'=>'10:30', 'active_from'=>'2030-01-01', 'active_until'=>'2030-01-31']);

@@ -59,8 +59,9 @@ $second=get_class_session((int)db()->query("SELECT id FROM class_sessions WHERE 
 $collision=register_student_attendance($second['qr_token'],array_replace($student,['student_code'=>'99990003']));
 $expect(!$collision['ok'] && (int)db()->query('SELECT COUNT(*) FROM attendance_records')->fetchColumn()===1,'Request ID reused for another class cannot claim false success');
 $expect(register_student_attendance($second['qr_token'],array_replace($student,['student_code'=>'99990003','client_request_id'=>'lifecycle-request-0003']))['ok'],'New request ID can sign into second class');
-$termInput=['academic_year'=>2573,'semester'=>'1','term_starts_on'=>'2030-06-01','term_ends_on'=>'2030-06-30','dates_confirmed'=>'1'];
-$term=create_academic_term($termInput); $otherTerm=create_academic_term(array_replace($termInput,['semester'=>'2']));
+require __DIR__.'/fixtures/academic-term.php';
+$term=fixture_academic_term('2030-06-01','2030-06-30');
+$otherTerm=fixture_academic_term('2030-06-01','2030-06-30','2');
 $schedule=['term_id'=>$term['id'],'room_id'=>$room,'lecturer_user_id'=>$admin,'course_code'=>'PLAN101','course_name'=>'แผนทดสอบ','day_of_week'=>1,'starts_time'=>'09:00','ends_time'=>'12:00','active_from'=>'2030-06-01','active_until'=>'2030-06-30'];
 $planned=create_course_schedule($schedule);$expect($planned['ok'],'Create recurring test schedule');
 $expect(!create_course_schedule(array_replace($schedule,['term_id'=>$otherTerm['id']]))['ok'],'Overlapping academic terms still cannot double-book a room');

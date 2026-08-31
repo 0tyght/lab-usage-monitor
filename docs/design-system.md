@@ -93,6 +93,7 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 
 ## Content style
 
+- Academic term creation asks only for academic year and semester. Display locked dates as read-only text from the official NU regular-undergraduate calendar; never show editable dates or a confirmation checkbox. Offer only catalog years, and derive dates server-side. Keep the official source link secondary to the dates.
 - Canonical action: `สร้างคลาสเรียน` for a class on one date. Use the same label on entry buttons, dialog title and submit; success is `สร้างคลาสเรียนแล้ว`. Mention automatic QR preparation in helper text, not a competing action name.
 - Use `คลาสเรียนแบบครั้งเดียว` only as a type/section label when distinguishing it from a recurring plan. Use `เพิ่มตารางเรียนรายสัปดาห์` for recurring scheduling. Reserve `คาบ` for the duration unit in reports; do not use `เพิ่มคาบ` as an alternative creation action.
 - Use direct Thai labels: `สแกน QR Code`, `บันทึกการเข้าใช้`, `ลองอีกครั้ง`, `ดาวน์โหลดรายงาน`.

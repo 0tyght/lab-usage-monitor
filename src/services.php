@@ -161,18 +161,16 @@ function create_academic_term(array $input): array
     $semester = (string) ($input['semester'] ?? '');
     if ($semester === '3') $semester = 'summer';
     $name = academic_term_code((int)$year, $semester);
-    $startsOn = trim((string) ($input['term_starts_on'] ?? ''));
-    $endsOn = trim((string) ($input['term_ends_on'] ?? ''));
     $errors = [];
-    if ($year === false || $year < 2500 || $year > 2700) $errors['academic_year'] = 'ปีการศึกษาต้องอยู่ระหว่าง 2500–2700';
+    $calendar = nu_academic_presets()[(int)$year] ?? null;
+    if (!$calendar) $errors['academic_year'] = 'กรุณาเลือกปีที่มีปฏิทิน ม.นเรศวรในระบบ';
     if (!in_array($semester, ['1', '2', 'summer'], true)) $errors['semester'] = 'กรุณาเลือกภาคการศึกษา';
-    if (!valid_iso_date($startsOn)) $errors['term_starts_on'] = 'กรุณาระบุวันเปิดภาคที่ถูกต้อง';
-    if (!valid_iso_date($endsOn) || $endsOn < $startsOn) $errors['term_ends_on'] = 'วันสิ้นสุดภาคต้องเป็นวันที่ถูกต้องและไม่อยู่ก่อนวันเปิดภาค';
-    $preset = nu_academic_presets()[(int)$year]['terms'][$semester] ?? null;
-    if ((!$preset || $preset['start'] !== $startsOn || $preset['end'] !== $endsOn) && ($input['dates_confirmed'] ?? '') !== '1') {
-        $errors['dates_confirmed'] = 'โปรดยืนยันว่าตรวจสอบช่วงวันที่กับประกาศของปีและหลักสูตรที่ใช้งานแล้ว';
-    }
+    $preset = $calendar['terms'][$semester] ?? null;
+    if (!$errors && !$preset) $errors['semester'] = 'ยังไม่มีวันภาคการศึกษานี้ในปฏิทินของระบบ';
     if ($errors) return ['ok' => false, 'message' => 'กรุณาตรวจสอบข้อมูลภาคการศึกษา', 'errors' => $errors];
+    // Dates are authoritative catalog values, never client-supplied dates/confirmation.
+    $startsOn = $preset['start'];
+    $endsOn = $preset['end'];
 
     try {
         $now = utc_now();

@@ -17,46 +17,35 @@
     const existing = JSON.parse(q("[data-existing-terms]").textContent);
     const year = q('[name="academic_year"]', form);
     const semester = q('[name="semester"]', form);
-    const start = q('[name="term_starts_on"]', form);
-    const end = q('[name="term_ends_on"]', form);
-    const confirm = q('[name="dates_confirmed"]', form);
+    const start = q('[data-term-start]', form);
+    const end = q('[data-term-end]', form);
     const source = q("[data-term-source]", form);
     const submit = q('[type="submit"]', form);
     const exists = () => existing.some((t) => String(t.year) === year.value && t.semester === semester.value);
     const describe = () => {
       const preset = presets[year.value];
       const dates = preset?.terms[semester.value];
-      const matches = dates && dates.start === start.value && dates.end === end.value;
-      confirm.required = !matches;
-      if (matches) {
-        confirm.setCustomValidity("");
-        confirm.removeAttribute("aria-invalid");
-        const error = document.getElementById("error-dates_confirmed");
-        if (error) { error.hidden = true; error.textContent = ""; }
-      }
+      start.textContent = dates ? thaiDate(dates.start) : "—";
+      end.textContent = dates ? thaiDate(dates.end) : "—";
       source.replaceChildren();
-      if (preset) {
+      if (dates) {
         const link = node("a", preset.source_label);
-        link.href = preset.source;
+        link.href = dates.source || preset.source;
         link.target = "_blank";
         link.rel = "noopener";
-        source.append(link, node("span", matches ? " · เติมช่วงวันที่ตามประกาศแล้ว" : " · วันที่ปรับเอง ต้องยืนยันก่อนบันทึก"));
-      } else source.textContent = "ยังไม่มีวันที่อ้างอิงที่ยืนยันแล้วสำหรับปีนี้ กรุณาตรวจประกาศของมหาวิทยาลัยและกรอกวันที่เอง";
+        source.append(link);
+      } else source.textContent = "เลือกปีและภาคที่มีปฏิทินในระบบเพื่อแสดงวันที่";
     };
     const update = (changed = false) => {
       qa("option", semester).forEach((option) => {
-        option.disabled = existing.some((t) => String(t.year) === year.value && t.semester === option.value);
+        option.disabled = !presets[year.value]?.terms[option.value] || existing.some((t) => String(t.year) === year.value && t.semester === option.value);
       });
-      if (semester.selectedOptions[0]?.disabled && !q("[data-term-error-summary]")) {
+      if (semester.selectedOptions[0]?.disabled && (changed || !q("[data-term-error-summary]"))) {
         const available = qa("option", semester).find((option) => !option.disabled);
-        if (available) { semester.value = available.value; changed = true; }
+        if (available) semester.value = available.value;
       }
       if (changed) {
-        const dates = presets[year.value]?.terms[semester.value];
-        start.value = dates?.start || "";
-        end.value = dates?.end || "";
-        confirm.checked = false;
-        [start, end, confirm].forEach((field) => {
+        [year, semester].forEach((field) => {
           field.setCustomValidity("");
           field.removeAttribute("aria-invalid");
           const error = document.getElementById(`error-${field.name}`);
@@ -64,16 +53,17 @@
           error.textContent = "";
         });
       }
-      q("[data-term-code]", form).textContent = `${year.value}/${semester.value === "summer" ? "3" : semester.value}`;
-      q("[data-term-exists]", form).textContent = exists() ? "บันทึกภาคนี้แล้ว กรุณาเลือกปีหรือภาคอื่น" : "ระบบบันทึกได้ปีละ 3 ภาค ไม่ซ้ำกัน";
-      submit.disabled = exists();
+      const dates = presets[year.value]?.terms[semester.value];
+      q("[data-term-code]", form).textContent = dates ? `${year.value}/${semester.value === "summer" ? "3" : semester.value}` : "—";
+      const yearComplete = presets[year.value] && qa("option", semester).every((option) => option.disabled);
+      q("[data-term-exists]", form).textContent = yearComplete ? "ปีนี้เพิ่มครบทั้ง 3 ภาคแล้ว กรุณาเลือกปีอื่น" : exists() ? "บันทึกภาคนี้แล้ว กรุณาเลือกปีหรือภาคอื่น" : "ระบบบันทึกได้ปีละ 3 ภาค ไม่ซ้ำกัน";
+      submit.disabled = !dates || exists();
       describe();
     };
     year.addEventListener("change", () => update(true));
     semester.addEventListener("change", () => update(true));
-    [start, end].forEach((field) => field.addEventListener("input", describe));
     form.addEventListener("submit", (event) => {
-      if (exists()) { event.preventDefault(); event.stopPropagation(); year.focus(); }
+      if (exists() || !presets[year.value]?.terms[semester.value]) { event.preventDefault(); event.stopPropagation(); year.focus(); }
     });
     update();
   }

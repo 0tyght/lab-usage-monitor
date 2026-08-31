@@ -21,7 +21,7 @@ Source: [official NU academic calendar 2568, regular undergraduate programs, pag
 
 Opening dates are from the opening-day row. LUMS uses the last final-exam day/day before the semester break as its inclusive end. Thus the interval includes examinations, not just teaching days. Weekly teaching schedules can end earlier; holidays and exam exceptions are not automatically inferred.
 
-Only 2568 was verified for this program. No dates are extrapolated for 2569 or other years. Other years and manually changed dates require administrator confirmation. Existing configured terms are preserved, not silently replaced. Dates elsewhere in the PDF for graduate/special programs must not be used as regular undergraduate dates.
+The later locked-calendar revision also verifies all three terms of 2569 using the official registrar. See [locked calendar sources and behavior](locked-academic-calendar.md). Dates are no longer editable and no administrator confirmation is needed; only catalog years can be created. Existing configured terms are preserved, not silently replaced. Dates elsewhere in the PDF for graduate/special programs must not be used as regular undergraduate dates.
 
 ## Calculation and compatibility
 
