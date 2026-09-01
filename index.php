@@ -261,6 +261,37 @@ if (($_GET['download'] ?? '') === 'report-csv') {
     exit;
 }
 
+if (($_GET['download'] ?? '') === 'attendance-csv') {
+    require_auth(['admin', 'lecturer']);
+    $filters = attendance_report_filters($_GET);
+    if ($filters['errors']) {
+        http_response_code(422);
+        header('Content-Type: text/plain; charset=UTF-8');
+        echo implode(' ', $filters['errors']);
+        exit;
+    }
+    $result = list_attendance_records($filters);
+    $table = attendance_report_table($result['items']);
+    $roomLabel = 'ทุกห้อง';
+    foreach (list_rooms() as $room) if ($room['id'] === $filters['room_id']) $roomLabel = $room['code'].' — '.$room['name'];
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Cache-Control: no-store');
+    header('Content-Disposition: attachment; filename="lums-attendance-' . $filters['date_from'] . '-' . $filters['date_to'] . '.csv"');
+    echo "\xEF\xBB\xBF";
+    $output = fopen('php://output', 'wb');
+    $metadata = [
+        ['รายงานการลงชื่อเข้าเรียน LUMS'],
+        ['ช่วงวันที่', $filters['date_from'], $filters['date_to']],
+        ['ห้อง', $roomLabel],
+        ['คำค้น', $filters['q']],
+        ['จำนวนรายการ', $result['total']],
+        [],
+    ];
+    foreach (array_merge($metadata, [$table['headers']], $table['rows']) as $row) fputcsv($output, array_map('csv_safe_value', $row));
+    fclose($output);
+    exit;
+}
+
 if (($_GET['download'] ?? '') === 'room-visits-csv') {
     require_auth('admin');
     $visitReport=room_visit_report($_GET);
@@ -477,7 +508,9 @@ if (!in_array($page, ['login', 'student-checkin','room-checkin'], true)) {
 
 // Keep old bookmarked class links working without a separate QR/detail page.
 if ($page === 'class-detail') redirect_to('classes',['class_id'=>(int)($_GET['id'] ?? 0)]);
-$allowedPages = ['login', 'student-checkin','room-checkin', 'dashboard', 'schedule', 'calendar', 'classes', 'records', 'rooms', 'reports'];
+// Keep old attendance bookmarks working while exposing one canonical report page.
+if ($page === 'records') redirect_to('reports', ['tab'=>'attendance'] + array_intersect_key($_GET, array_flip(['q','room_id','date_from','date_to'])));
+$allowedPages = ['login', 'student-checkin','room-checkin', 'dashboard', 'schedule', 'calendar', 'classes', 'rooms', 'reports'];
 if (!in_array($page, $allowedPages, true)) {
     http_response_code(404);
     $page = 'not-found';
@@ -633,7 +666,6 @@ $nav = [
     'calendar' => ['ปฏิทินการใช้ห้อง', 'calendar-days'],
     'classes' => ['คลาสเรียน', 'book-open'],
     'rooms' => ['ห้องปฏิบัติการ', 'door-open'],
-    'records' => ['ประวัติการเข้าเรียน', 'history'],
     'reports' => ['รายงาน', 'chart-no-axes-combined'],
 ];
 $navPage = $page;
@@ -681,7 +713,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <?php if (!in_array($page,['schedule','calendar','classes','records'],true)): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
+                <?php if (!in_array($page,['schedule','calendar','classes'],true)): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
             </header>
             <main id="main-content" class="content <?= $page === 'schedule' ? 'content--schedule' : '' ?>">
                 <?php if ($flash): ?>
@@ -724,8 +756,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                             <div class="section-heading"><div><h2>ทางลัด</h2><p>งานที่ใช้เป็นประจำ</p></div></div>
                             <a class="quick-action" href="?page=schedule"><span class="quick-icon" data-icon="calendar-days"></span><span><strong>เปิดตารางเรียน</strong><small>เลือกเวลาและตรวจห้องว่าง</small></span><span data-icon="chevron-right"></span></a>
                             <a class="quick-action" href="?page=classes&amp;new_once=1"><span class="quick-icon" data-icon="plus"></span><span><strong>สร้างคลาสเรียน</strong><small>เปิดรับให้นักศึกษาลงชื่อ</small></span><span data-icon="chevron-right"></span></a>
-                            <a class="quick-action" href="?page=records"><span class="quick-icon" data-icon="search"></span><span><strong>ค้นหาการเข้าเรียน</strong><small>กรองตามนักศึกษา ห้อง และช่วงเวลา</small></span><span data-icon="chevron-right"></span></a>
-                            <a class="quick-action" href="?page=reports"><span class="quick-icon" data-icon="download"></span><span><strong>ออกรายงาน</strong><small>สรุปข้อมูลการใช้งาน</small></span><span data-icon="chevron-right"></span></a>
+                            <a class="quick-action" href="?page=reports&amp;tab=attendance"><span class="quick-icon" data-icon="download"></span><span><strong>เปิดรายงาน</strong><small>ค้นหาการลงชื่อ สรุปการใช้ห้อง และส่งออก</small></span><span data-icon="chevron-right"></span></a>
                         </section>
                     </div>
                     <section class="section-block recent-section">
@@ -742,32 +773,22 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                 <?php elseif ($page === 'classes'): ?>
                     <?php require __DIR__.'/views/classes.php'; ?>
 
-
-                <?php elseif ($page === 'records'): ?>
-                    <?php if ($user['role']==='admin'): ?><p><a class="button button--secondary" href="?page=reports&amp;tab=walkins">ดูการเข้าใช้นอกคลาส</a></p><?php endif; ?>
-                    <?php $filters = ['q'=>(string)($_GET['q']??''),'room_id'=>(string)($_GET['room_id']??''),'date_from'=>(string)($_GET['date_from']??''),'date_to'=>(string)($_GET['date_to']??'')]; $result = list_attendance_records($filters); $rooms = list_rooms(); ?>
-                    <header class="page-header"><div><p class="eyebrow">ข้อมูลการเข้าเรียน</p><h1>ประวัติการเข้าเรียน</h1><p>ค้นหานักศึกษา รายวิชา ห้อง และเวลาที่ลงชื่อผ่าน QR Code</p></div><a class="button button--primary" href="?page=classes&amp;new_once=1">สร้างคลาสเรียน</a></header>
-                    <form method="get" class="filter-bar">
-                        <input type="hidden" name="page" value="records">
-                        <label class="search-field"><span data-icon="search"></span><span class="sr-only">ค้นหา</span><input name="q" value="<?= e($filters['q']) ?>" placeholder="ค้นหาชื่อ รหัสนักศึกษา หรือรายวิชา"></label>
-                        <label><span class="sr-only">ห้อง</span><select name="room_id"><option value="">ทุกห้อง</option><?php foreach($rooms as $room): ?><option value="<?= e($room['id']) ?>" <?= $filters['room_id']==(string)$room['id']?'selected':'' ?>><?= e($room['code']) ?></option><?php endforeach; ?></select></label>
-                        <label class="date-filter"><span>จาก</span><input type="date" name="date_from" value="<?= e($filters['date_from']) ?>"></label>
-                        <label class="date-filter"><span>ถึง</span><input type="date" name="date_to" value="<?= e($filters['date_to']) ?>"></label>
-                        <button class="button button--secondary" type="submit">ใช้ตัวกรอง</button>
-                        <a class="button button--ghost" href="?page=records">ล้าง</a>
-                    </form>
-                    <section class="section-block">
-                        <div class="section-heading"><div><h2>รายการลงชื่อทั้งหมด</h2><p>เรียงจากเวลาล่าสุด</p></div><span class="result-count">พบ <?= e($result['total']) ?> รายการ</span></div>
-                        <?php render_attendance_table($result['items'], true, (bool)array_filter($filters, static fn(string $value): bool => trim($value) !== '')); ?>
-                    </section>
-
                 <?php elseif ($page === 'rooms'): ?>
                     <?php $rooms = list_rooms(); ?>
                     <?php require __DIR__.'/views/rooms.php'; ?>
 
                 <?php elseif ($page === 'reports'): ?>
-                    <?php if ($user['role']==='admin'): ?><nav class="report-tabs" aria-label="ประเภทรายงาน"><a class="button button--<?= ($_GET['tab'] ?? '')==='walkins'?'secondary':'primary' ?>" href="?page=reports">ตารางและคลาสเรียน</a><a class="button button--<?= ($_GET['tab'] ?? '')==='walkins'?'primary':'secondary' ?>" href="?page=reports&amp;tab=walkins">การเข้าใช้นอกคลาส</a></nav><?php endif; ?>
-                    <?php require __DIR__ . (($_GET['tab'] ?? '')==='walkins'?'/views/room-visit-report.php':'/views/reports.php'); ?>
+                    <?php
+                    $reportTab = in_array($_GET['tab'] ?? '', ['usage','attendance','walkins'], true) ? (string)$_GET['tab'] : 'usage';
+                    if ($reportTab === 'walkins' && $user['role'] !== 'admin') $reportTab = 'usage';
+                    ?>
+                    <header class="page-header"><div><p class="eyebrow">ค้นหา สรุป และส่งออกจากจุดเดียว</p><h1>รายงาน</h1><p>ข้อมูลการลงชื่อ การใช้ห้องตามคลาส และการเข้าใช้นอกคลาสอยู่ในหน้านี้</p></div></header>
+                    <nav class="report-tabs" aria-label="ข้อมูลในรายงาน">
+                        <a class="report-tab <?= $reportTab==='attendance'?'is-active':'' ?>" href="?page=reports&amp;tab=attendance" <?= $reportTab==='attendance'?'aria-current="page"':'' ?>>การลงชื่อเข้าเรียน</a>
+                        <a class="report-tab <?= $reportTab==='usage'?'is-active':'' ?>" href="?page=reports&amp;tab=usage" <?= $reportTab==='usage'?'aria-current="page"':'' ?>>การใช้ห้องตามคลาส</a>
+                        <?php if ($user['role']==='admin'): ?><a class="report-tab <?= $reportTab==='walkins'?'is-active':'' ?>" href="?page=reports&amp;tab=walkins" <?= $reportTab==='walkins'?'aria-current="page"':'' ?>>การเข้าใช้นอกคลาส</a><?php endif; ?>
+                    </nav>
+                    <?php require __DIR__ . match ($reportTab) {'attendance'=>'/views/attendance-report.php','walkins'=>'/views/room-visit-report.php',default=>'/views/reports.php'}; ?>
 
                 <?php else: ?>
                     <section class="empty-feature"><span data-icon="circle-alert"></span><h1>ไม่พบหน้าที่ต้องการ</h1><p>ลิงก์อาจไม่ถูกต้องหรือหน้านี้ถูกย้ายแล้ว</p><a class="button button--primary" href="?page=dashboard">กลับหน้าภาพรวม</a></section>
@@ -825,7 +846,7 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
 {
     if (!$items) {
         echo $filtered
-            ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบการลงชื่อที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้น ห้อง หรือช่วงวันที่</span><a class="button button--secondary" href="?page=records">ล้างตัวกรอง</a></div>'
+            ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบการลงชื่อที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้น ห้อง หรือช่วงวันที่</span><a class="button button--secondary" href="?page=reports&amp;tab=attendance">ล้างตัวกรอง</a></div>'
             : '<div class="empty-state"><span data-icon="inbox"></span><strong>ยังไม่มีนักศึกษาลงชื่อ</strong><span>รายการจะปรากฏที่นี่เมื่อมีการส่งแบบฟอร์มผ่าน QR Code</span></div>';
         return;
     }

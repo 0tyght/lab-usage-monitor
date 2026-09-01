@@ -68,6 +68,7 @@ $privateFiles = [
     'src/room-visits.php',
     'views/room-checkin.php',
     'views/calendar.php',
+    'views/attendance-report.php',
     'views/class-panel.php',
     'scripts/init.php',
     'tests/ux-regression.php',

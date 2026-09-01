@@ -787,6 +787,48 @@ function list_attendance_records(array $filters = []): array
     return ['ok' => true, 'items' => $items, 'total' => count($items)];
 }
 
+function attendance_report_filters(array $input): array
+{
+    $today = new DateTimeImmutable('today', new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok')));
+    $from = (string) ($input['date_from'] ?? $today->modify('first day of this month')->format('Y-m-d'));
+    $to = (string) ($input['date_to'] ?? $today->modify('last day of this month')->format('Y-m-d'));
+    $errors = [];
+    if (!valid_iso_date($from) || !valid_iso_date($to) || $from > $to) {
+        $errors[] = 'กรุณาเลือกวันที่เริ่มและสิ้นสุดให้ถูกต้อง';
+    } elseif ((new DateTimeImmutable($from))->diff(new DateTimeImmutable($to))->days > 365) {
+        $errors[] = 'เลือกช่วงรายงานได้ไม่เกิน 366 วันต่อครั้ง';
+    }
+    $roomId = max(0, (int) ($input['room_id'] ?? 0));
+    if ($roomId && !array_filter(list_rooms(), static fn(array $room): bool => $room['id'] === $roomId)) {
+        $errors[] = 'ไม่พบห้องที่เลือก กรุณาเลือกห้องใหม่';
+    }
+    preg_match('/^.{0,100}/us', trim((string) ($input['q'] ?? '')), $search);
+    return [
+        'q' => $search[0] ?? '',
+        'room_id' => $roomId,
+        'date_from' => $from,
+        'date_to' => $to,
+        'errors' => $errors,
+    ];
+}
+
+function attendance_report_query(array $filters): array
+{
+    return array_diff_key($filters, ['errors' => true]);
+}
+
+function attendance_report_table(array $items): array
+{
+    $timezone = new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok'));
+    $headers = ['เวลาลงชื่อ', 'รหัสนักศึกษา', 'ชื่อ–นามสกุล', 'รหัสวิชา', 'ชื่อวิชา', 'กลุ่ม', 'ห้อง', 'ผู้สอน'];
+    $rows = [];
+    foreach ($items as $item) {
+        $time = (new DateTimeImmutable($item['check_in_at']))->setTimezone($timezone)->format('d/m/Y H:i');
+        $rows[] = [$time, $item['student_code'], $item['student_name'], $item['course_code'], $item['course_name'], $item['section'] ?? '', $item['room_code'], $item['lecturer_name']];
+    }
+    return ['headers' => $headers, 'rows' => $rows];
+}
+
 function register_student_attendance(string $token, array $input): array
 {
     $session = get_public_class_by_token($token);

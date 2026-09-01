@@ -9,13 +9,24 @@
 .room-qr-poster [data-room-qr] { background: white; padding: 24px; width: min(100%,340px); margin: 16px auto; }
 .room-qr-poster canvas,.room-qr-poster img { display: block; width: 100%; height: auto; }
 .visit-row-action { display: flex; gap: 8px; min-width: 260px; align-items: end; flex-wrap: wrap; }
-.report-tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 24px; }
+.report-tabs { display: flex; gap: 24px; overflow-x: auto; margin: -8px 0 24px; border-bottom: 1px solid var(--border); }
+.report-tab { display: inline-flex; align-items: center; flex: 0 0 auto; min-height: 44px; padding: 8px 0; border-bottom: 3px solid transparent; color: var(--muted); font-weight: 600; text-decoration: none; }
+.report-tab:hover { color: var(--brand-700); }
+.report-tab.is-active { border-bottom-color: var(--brand-600); color: var(--brand-900); }
+.report-tab:focus-visible { outline: 3px solid color-mix(in srgb,var(--brand-600) 30%,transparent); outline-offset: -3px; }
+.report-section-heading { align-items: flex-start; padding-block: 0 16px; margin-bottom: 8px; border-bottom: 1px solid var(--border); }
+.report-section-heading h2 { margin-bottom: 4px; }
+.report-section-heading p { color: var(--muted); }
 .visit-row-action input { min-width: 150px; }
 .visit-report-table td { vertical-align: top; }
 .visit-report-table th:first-child { min-width: 160px; }
 @media (max-width: 640px) {
   .usage-report .section-heading { flex-wrap: wrap; gap: 8px; }
   .usage-report .result-count { white-space: normal; }
+  .report-tabs { gap: 14px; }
+  .report-tab { font-size: 13px; }
+  .report-section-heading .schedule-header-actions { width: 100%; }
+  .report-section-heading .schedule-header-actions .button { flex: 1 1 auto; }
   .room-qr-dialog .term-dialog__actions { flex-wrap: wrap; }
   .room-qr-dialog .term-dialog__actions .button { flex: 1 1 100%; }
 }

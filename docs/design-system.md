@@ -54,7 +54,7 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 
 ### Desktop navigation
 
-- Persistent left navigation: ภาพรวม, เช็กอิน, ห้องปฏิบัติการ, ประวัติการใช้งาน, รายงาน, ผู้ใช้งาน, ตั้งค่า
+- Persistent left navigation: ภาพรวม, ตารางเรียน, ปฏิทินการใช้ห้อง, คลาสเรียน, ห้องปฏิบัติการ, รายงาน
 - Compact top bar: current context, notifications if required, user menu
 - Page header: title, short operational context, primary action aligned to the end
 
@@ -87,6 +87,7 @@ Use semantic tokens in code rather than scattering raw color values. Every statu
 
 ### Reports
 
+- Use one page and one navigation label: `รายงาน`. Put attendance, scheduled/classroom usage, and outside-class room visits in clearly named data tabs inside that page; do not expose a separate history page.
 - Always show active date range and filters.
 - Start with operational questions: busiest rooms, usage over time, peak periods, missing checkout, and data completeness.
 - Exported data must match the current filter state.

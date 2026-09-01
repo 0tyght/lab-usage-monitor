@@ -204,6 +204,23 @@ $cookies=[];
 $expect(str_contains($reopened,'name="student_code"'),'Same public QR works after explicit reopening');
 $cookies=$adminCookies;
 
+// One canonical report page contains attendance, room usage and outside-class data.
+$reportDate=(new DateTimeImmutable('now',new DateTimeZone('Asia/Bangkok')))->format('Y-m-d');
+$attendanceParams=['page'=>'reports','tab'=>'attendance','date_from'=>$reportDate,'date_to'=>$reportDate,'q'=>'99998888'];
+[, $attendanceReport]=$request('/?'.http_build_query($attendanceParams));
+$reportDom=new DOMDocument();@$reportDom->loadHTML('<?xml encoding="UTF-8">'.$attendanceReport);$reportXPath=new DOMXPath($reportDom);
+$expect($reportXPath->query('//nav[contains(@class,"main-nav")]//a[contains(@href,"page=records")]')->length===0 && $reportXPath->query('//nav[contains(@class,"main-nav")]//a[contains(@href,"page=reports")]')->length===1,'Sidebar exposes one canonical report destination');
+$expect($reportXPath->query('//main//h1[normalize-space(.)="รายงาน"]')->length===1 && str_contains($attendanceReport,'การลงชื่อเข้าเรียน') && str_contains($attendanceReport,'การใช้ห้องตามคลาส') && str_contains($attendanceReport,'การเข้าใช้นอกคลาส'),'Report page groups all three data types under one title');
+$expect(str_contains($attendanceReport,'99998888') && str_contains($attendanceReport,'นิสิตสมมติ ทดสอบ HTTP'),'Attendance report retains the searchable individual records');
+[$status,$attendanceCsv]=$request('/?'.http_build_query(['download'=>'attendance-csv']+array_diff_key($attendanceParams,['page'=>true,'tab'=>true])));
+$expect($status===200 && str_starts_with($attendanceCsv,"\xEF\xBB\xBF") && str_contains($attendanceCsv,'99998888'),'Attendance report exports the same filtered record as UTF-8 CSV');
+[, $attendancePrint]=$request('/?'.http_build_query($attendanceParams+['print'=>1]));
+$expect(str_contains($attendancePrint,'data-print-report') && str_contains($attendancePrint,'99998888'),'Attendance report provides a printable PDF view');
+[$status,$badAttendanceCsv]=$request('/?download=attendance-csv&date_from=invalid');
+$expect($status===422 && !str_contains($badAttendanceCsv,'99998888'),'Attendance export rejects invalid filters instead of returning different data');
+[$status,,$legacyReport]=$request('/?page=records&q=99998888');
+$expect($status===302 && str_contains($legacyReport,'page=reports') && str_contains($legacyReport,'tab=attendance') && str_contains($legacyReport,'q=99998888'),'Old attendance bookmarks redirect to the unified report');
+
 // Real multipart uploads verify validation and all-or-nothing import.
 $importTerm=(int)db()->query("SELECT id FROM academic_terms WHERE academic_year=2569 AND semester='2'")->fetchColumn();
 [, $scheduleHtml]=$request('/?page=schedule&term_id='.$importTerm);

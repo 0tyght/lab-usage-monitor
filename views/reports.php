@@ -15,9 +15,9 @@ $pageNumber = min($pageNumber, $pageCount);
 $visibleRows = isset($_GET['print']) ? $reportTable['rows'] : array_slice($reportTable['rows'], ($pageNumber-1)*50, 50);
 ?>
 <section class="usage-report">
-<header class="page-header"><div><p class="eyebrow">ตรวจสอบและส่งออกข้อมูลชุดเดียวกัน</p><h1>รายงานการใช้ห้อง</h1><p>เลือกวันที่ ห้อง และช่วงเวลา แล้วสรุปเป็นชั่วโมงหรือคาบเทียบเท่า</p></div><?php if (!$report['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports', 'print'=>1]+$reportQuery)) ?>" target="_blank" rel="noopener">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'report-csv']+$reportQuery)) ?>"><span data-icon="download"></span>ส่งออก CSV</a></div><?php endif; ?></header>
+<header class="section-heading report-section-heading"><div><h2>การใช้ห้องตามคลาส</h2><p>เลือกวันที่ ห้อง และช่วงเวลา แล้วสรุปเป็นชั่วโมงหรือคาบเทียบเท่า</p></div><?php if (!$report['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'usage','print'=>1]+$reportQuery)) ?>" target="_blank" rel="noopener">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'report-csv']+$reportQuery)) ?>"><span data-icon="download"></span>ส่งออก CSV</a></div><?php endif; ?></header>
 <form method="get" class="report-filters" data-report-filters>
-    <input type="hidden" name="page" value="reports">
+    <input type="hidden" name="page" value="reports"><input type="hidden" name="tab" value="usage">
     <label class="field"><span>ตั้งแต่วันที่</span><input type="date" name="date_from" value="<?= e($filters['date_from']) ?>" required></label>
     <label class="field"><span>ถึงวันที่</span><input type="date" name="date_to" value="<?= e($filters['date_to']) ?>" required></label>
     <label class="field"><span>ห้องปฏิบัติการ</span><select name="room_id"><option value="0">ทุกห้อง</option><?php foreach ($reportRooms as $r): ?><option value="<?= $r['id'] ?>" <?= $r['id']===$filters['room_id']?'selected':'' ?>><?= e($r['code'].' — '.$r['name']) ?></option><?php endforeach; ?></select></label>
@@ -32,7 +32,7 @@ $visibleRows = isset($_GET['print']) ? $reportTable['rows'] : array_slice($repor
     <label class="field"><span>ค้นหาวิชา / ผู้สอน</span><input name="q" value="<?= e($filters['q']) ?>" maxlength="100" placeholder="รหัสวิชา ชื่อวิชา ผู้สอน หรือกลุ่ม"></label>
     <label class="field"><span>เรียงวันที่ / ห้อง</span><select name="sort"><option value="asc" <?= $filters['sort']==='asc'?'selected':'' ?>>น้อยไปมาก</option><option value="desc" <?= $filters['sort']==='desc'?'selected':'' ?>>มากไปน้อย</option></select></label>
     </div></details>
-    <div class="report-filter-actions"><button class="button button--primary" type="submit">แสดงรายงาน</button><a class="button button--secondary" href="?page=reports">ล้างตัวกรอง</a></div>
+    <div class="report-filter-actions"><button class="button button--primary" type="submit">แสดงรายงาน</button><a class="button button--secondary" href="?page=reports&amp;tab=usage">ล้างตัวกรอง</a></div>
 </form>
 <p class="inline-note" role="status" data-report-pending hidden>เปลี่ยนตัวกรองแล้ว กรุณากด “แสดงรายงาน” ก่อนส่งออก ข้อมูลด้านล่างยังเป็นผลลัพธ์ครั้งก่อน</p>
 <?php if ($report['errors']): ?><div class="alert alert--error" role="alert"><?= e(implode(' ', $report['errors'])) ?></div><?php else: ?>
@@ -44,7 +44,7 @@ $visibleRows = isset($_GET['print']) ? $reportTable['rows'] : array_slice($repor
 <div class="section-heading"><h2>รายละเอียดรายงาน</h2><span class="result-count">แสดง <?= count($visibleRows) ?> จาก <?= count($reportTable['rows']) ?> แถว<?= !isset($_GET['print'])?' · หน้า '.$pageNumber.'/'.$pageCount:'' ?></span></div>
 <?php if (!$reportTable['rows']): ?><div class="empty-state"><span data-icon="inbox"></span><strong>ไม่พบข้อมูลตามตัวกรอง</strong><span>ลองขยายช่วงวันที่ เลือกทุกห้อง หรือเลือกแผนและคลาสที่สร้าง</span></div><?php else: ?>
 <div class="table-wrap report-table-wrap"><table class="data-table report-data-table"><caption class="sr-only">รายงาน <?= e($roomLabel) ?> ตามวันที่และเวลาที่เลือก</caption><thead><tr><?php foreach ($reportTable['headers'] as $heading): ?><th><?= e($heading) ?></th><?php endforeach; ?></tr></thead><tbody><?php foreach ($visibleRows as $row): ?><tr><?php foreach ($row as $i=>$value): ?><td data-label="<?= e($reportTable['headers'][$i]) ?>"><?= e($value) ?></td><?php endforeach; ?></tr><?php endforeach; ?></tbody></table></div>
-<?php if ($pageCount > 1 && !isset($_GET['print'])): ?><nav class="report-pagination" aria-label="หน้ารายงาน"><?php if ($pageNumber>1): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports', 'page_number'=>$pageNumber-1]+$reportQuery)) ?>">หน้าก่อน</a><?php endif; ?><?php if ($pageNumber<$pageCount): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports', 'page_number'=>$pageNumber+1]+$reportQuery)) ?>">หน้าถัดไป</a><?php endif; ?><small>CSV และฉบับพิมพ์รวมทุกหน้าที่ตรงตัวกรอง</small></nav><?php endif; ?>
+<?php if ($pageCount > 1 && !isset($_GET['print'])): ?><nav class="report-pagination" aria-label="หน้ารายงาน"><?php if ($pageNumber>1): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'usage','page_number'=>$pageNumber-1]+$reportQuery)) ?>">หน้าก่อน</a><?php endif; ?><?php if ($pageNumber<$pageCount): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'usage','page_number'=>$pageNumber+1]+$reportQuery)) ?>">หน้าถัดไป</a><?php endif; ?><small>CSV และฉบับพิมพ์รวมทุกหน้าที่ตรงตัวกรอง</small></nav><?php endif; ?>
 <?php endif; ?>
 <?php endif; ?>
 </section>
