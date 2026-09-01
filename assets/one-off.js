@@ -48,10 +48,12 @@
         button.disabled=!field('room_id').value || (!semester() && !field('class_date').value);
         button.setAttribute('aria-label',days[day]+' '+clock(a)+'–'+clock(a+60));
         const selected=slots.some(s=>String(s.room_id)===field('room_id').value && (semester()?Number(s.day_of_week)===day:s.class_date===field('class_date').value) && a<minutes(s.ends_time) && a+60>minutes(s.starts_time));
-        button.setAttribute('aria-pressed',String(selected));if(selected)button.textContent='เลือกแล้ว';
+        button.setAttribute('aria-pressed',String(selected));
+        if(selected){button.textContent='เลือกแล้ว';button.setAttribute('aria-label',button.getAttribute('aria-label')+' เลือกแล้ว กดเพื่อเอาออก');}
         if(pending && pending.day===day && a>=pending.start && a<pending.end)button.classList.add('is-pending');
         button.addEventListener('click',()=>{
-          if(pending && pending.day===day){
+          if(selected){removeHour(day,a);}
+          else if(pending && pending.day===day){
             pending.start=Math.min(pending.start,a);pending.end=Math.max(pending.end,a+60);addRange();
           }else{pending={day,start:a,end:a+60};renderPending();renderGrid();}
         });
@@ -71,10 +73,41 @@
     q('[data-add-range]').disabled=!pending;
     q('[data-pending-range]').textContent=pending?days[pending.day]+' '+clock(pending.start)+'–'+clock(pending.end)+' · คลิกช่องสุดท้าย หรือกดเพิ่มช่วงนี้สำหรับ 1 ชั่วโมง':'คลิกเลือกช่วงใหม่ได้ทันที เลือกห้องอื่นด้านบนได้หากต้องการ';
   }
+  function normalizeSlots(){
+    const groups=new Map(),invalid=[];
+    slots.forEach((slot)=>{
+      const start=minutes(slot.starts_time),end=minutes(slot.ends_time);
+      if(!slot.room_id || !Number.isFinite(start) || !Number.isFinite(end) || start>=end){invalid.push(slot);return;}
+      const key=[slot.room_id,slot.day_of_week,slot.class_date].join('|');
+      if(!groups.has(key))groups.set(key,[]);groups.get(key).push({...slot,start,end});
+    });
+    const merged=[];
+    groups.forEach((items)=>{
+      items.sort((a,b)=>a.start-b.start);
+      items.forEach((item)=>{
+        const previous=merged.at(-1);
+        const same=previous && String(previous.room_id)===String(item.room_id) && Number(previous.day_of_week)===Number(item.day_of_week) && previous.class_date===item.class_date;
+        if(same && minutes(previous.ends_time)>=item.start)previous.ends_time=clock(Math.max(minutes(previous.ends_time),item.end));
+        else merged.push({room_id:String(item.room_id),day_of_week:Number(item.day_of_week),class_date:item.class_date,starts_time:clock(item.start),ends_time:clock(item.end)});
+      });
+    });
+    slots=[...merged,...invalid];
+  }
+  function removeHour(day,start){
+    const end=start+60,next=[];
+    slots.forEach((slot)=>{
+      const same=String(slot.room_id)===field('room_id').value && (semester()?Number(slot.day_of_week)===day:slot.class_date===field('class_date').value);
+      const from=minutes(slot.starts_time),to=minutes(slot.ends_time);
+      if(!same || !Number.isFinite(from) || !Number.isFinite(to) || from>=end || to<=start){next.push(slot);return;}
+      if(from<start)next.push({...slot,ends_time:clock(start)});
+      if(to>end)next.push({...slot,starts_time:clock(end)});
+    });
+    slots=next;pending=null;normalizeSlots();renderSlots();renderGrid();renderPending();queue();
+  }
   function addRange(){
     if(!pending)return;
     if(slots.length>=20){feedback.textContent='เลือกได้ไม่เกิน 20 ช่วงต่อครั้ง';return;}
-    slots.push({room_id:field('room_id').value,day_of_week:pending.day,class_date:field('class_date').value,starts_time:clock(pending.start),ends_time:clock(pending.end)});
+    slots.push({room_id:field('room_id').value,day_of_week:pending.day,class_date:field('class_date').value,starts_time:clock(pending.start),ends_time:clock(pending.end)});normalizeSlots();
     pending=null;renderSlots();renderGrid();renderPending();queue();
   }
   function rowField(row,label,control){

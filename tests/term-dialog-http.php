@@ -166,6 +166,7 @@ echo "Authenticated planning HTTP checks passed: $checks\n";
 $request('/?page=login',['action'=>'login','csrf_token'=>$csrf($login),'email'=>'admin@example.invalid','password'=>getenv('LUMS_ADMIN_PASSWORD')]);
 [, $classHub]=$request('/?page=classes&new_once=1');
 $expect(str_contains($classHub,'data-one-off-form') && str_contains($classHub,'data-class-slots') && str_contains($classHub,'ก่อนเวลาเรียน 10 นาที'),'Class creation uses the shared multi-hour form and explicit admission policy');
+$expect(str_contains($classHub,'กดช่องสีเขียวที่เลือกแล้วเพื่อเอาชั่วโมงนั้นออก'),'Class picker explains that a selected hour can be toggled off');
 [,,$oldError]=$request('/?page=classes',['action'=>'create_class','csrf_token'=>$csrf($classHub),'course_code'=>'KEEPME','course_name'=>'สมมติ','starts_at'=>'2030-05-06T09:00','ends_at'=>'2030-05-06T13:00']);
 [, $oldDraft]=$request('/'.$oldError);
 $expect(str_contains($oldError,'new_once=1') && str_contains($oldDraft,'value="KEEPME"') && str_contains($oldDraft,'data-once-errors'),'Old creation endpoint retains failed input in the shared dialog');
