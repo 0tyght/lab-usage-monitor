@@ -44,6 +44,9 @@ jobs:
       - name: Test UX status filters and lecturer scope
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/ux-regression.php
 
+      - name: Test room management and unlimited-capacity policy
+        run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/room-management-regression.php
+
       - name: Test free online gateway
         run: node --test tests/gateway.test.mjs
 
@@ -56,10 +59,10 @@ jobs:
       - name: Test horizontal timetable positioning and overlapping lanes
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/timetable-regression.php
 
-      - name: Test admission lifecycle, capacity and multi-hour classes
+      - name: Test admission lifecycle, unlimited attendance and multi-hour classes
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/class-lifecycle-regression.php
 
-      - name: Test simultaneous attendance at room capacity
+      - name: Test simultaneous attendance without room capacity limit
         run: docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/attendance-concurrency.php
 
       - name: Test atomic multi-slot classes and scoped changes

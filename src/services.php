@@ -68,6 +68,223 @@ function find_room_by_code(string $code): ?array
     return $room;
 }
 
+function get_room_by_id(int $id): ?array
+{
+    if ($id < 1) return null;
+
+    $statement = db()->prepare(room_select_sql() . ' WHERE r.id = :id LIMIT 1');
+    $statement->execute([':id' => $id]);
+    $room = $statement->fetch();
+    if (!$room) return null;
+
+    $room['id'] = (int) $room['id'];
+    $room['capacity'] = (int) $room['capacity'];
+    $room['active_usage_id'] = $room['active_usage_id'] === null ? null : (int) $room['active_usage_id'];
+
+    return $room;
+}
+
+function validate_room_management_input(array $input, int $roomId = 0): array
+{
+    $user = current_user();
+    if (!$user || $user['role'] !== 'admin') {
+        return [
+            'ok' => false,
+            'message' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่จัดการห้องปฏิบัติการได้',
+            'errors' => ['form' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่จัดการห้องปฏิบัติการได้'],
+            'values' => [],
+        ];
+    }
+
+    $code = strtoupper(trim((string)($input['code'] ?? '')));
+    $name = trim((string)($input['name'] ?? ''));
+    $building = trim((string)($input['building'] ?? ''));
+    $floor = trim((string)($input['floor'] ?? ''));
+    $status = trim((string)($input['status'] ?? 'available'));
+    $description = trim((string)($input['description'] ?? ''));
+    $errors = [];
+
+    if (!preg_match('/^[A-Z0-9._-]{1,30}$/D', $code)) {
+        $errors['code'] = 'รหัสห้องใช้ได้เฉพาะ A-Z, 0-9, จุด ขีดกลาง หรือขีดล่าง และยาวไม่เกิน 30 ตัวอักษร';
+    }
+    if (text_length($name) < 1 || text_length($name) > 150) {
+        $errors['name'] = 'ชื่อห้องต้องมีความยาว 1–150 ตัวอักษร';
+    }
+    if (text_length($building) < 1 || text_length($building) > 150) {
+        $errors['building'] = 'ชื่ออาคารต้องมีความยาว 1–150 ตัวอักษร';
+    }
+    if (text_length($floor) > 30) {
+        $errors['floor'] = 'ข้อมูลชั้นต้องยาวไม่เกิน 30 ตัวอักษร';
+    }
+    if (!in_array($status, ['available', 'occupied', 'maintenance', 'inactive'], true)) {
+        $errors['status'] = 'สถานะห้องไม่ถูกต้อง';
+    }
+    if (text_length($description) > 500) {
+        $errors['description'] = 'หมายเหตุต้องยาวไม่เกิน 500 ตัวอักษร';
+    }
+
+    if (!isset($errors['code'])) {
+        $duplicate = db()->prepare('SELECT id FROM rooms WHERE code = :code AND id <> :id LIMIT 1');
+        $duplicate->execute([':code' => $code, ':id' => $roomId]);
+        if ($duplicate->fetchColumn() !== false) {
+            $errors['code'] = 'มีรหัสห้องนี้อยู่แล้ว';
+        }
+    }
+
+    return [
+        'ok' => $errors === [],
+        'message' => $errors === [] ? '' : 'กรุณาตรวจสอบข้อมูลห้องปฏิบัติการ',
+        'errors' => $errors,
+        'values' => [
+            'code' => $code,
+            'name' => $name,
+            'building' => $building,
+            'floor' => $floor,
+            'status' => $status,
+            'description' => $description,
+        ],
+    ];
+}
+
+function create_room(array $input): array
+{
+    $validated = validate_room_management_input($input);
+    if (!$validated['ok']) return $validated;
+
+    $user = current_user();
+    $values = $validated['values'];
+    $now = utc_now();
+    $qrToken = 'room-' . bin2hex(random_bytes(16));
+
+    try {
+        // capacity remains as a legacy compatibility column only.
+        // LUMS no longer limits attendance or room usage by this value.
+        $statement = db()->prepare(
+            'INSERT INTO rooms (code, name, building, floor, capacity, status, qr_token, description, created_at, updated_at)
+             VALUES (:code, :name, :building, :floor, 1, :status, :qr_token, :description, :created_at, :updated_at)'
+        );
+        $statement->execute([
+            ':code' => $values['code'],
+            ':name' => $values['name'],
+            ':building' => $values['building'],
+            ':floor' => $values['floor'] !== '' ? $values['floor'] : null,
+            ':status' => $values['status'],
+            ':qr_token' => $qrToken,
+            ':description' => $values['description'] !== '' ? $values['description'] : null,
+            ':created_at' => $now,
+            ':updated_at' => $now,
+        ]);
+        $id = (int)db()->lastInsertId();
+        audit_log('room_created', 'room', $id, $values, (int)$user['id']);
+
+        return ['ok' => true, 'id' => $id, 'message' => 'เพิ่มห้องปฏิบัติการเรียบร้อย'];
+    } catch (PDOException $exception) {
+        if ((string)$exception->getCode() === '23000' || str_contains(strtolower($exception->getMessage()), 'unique')) {
+            return ['ok' => false, 'message' => 'มีรหัสห้องนี้อยู่แล้ว', 'errors' => ['code' => 'มีรหัสห้องนี้อยู่แล้ว']];
+        }
+        throw $exception;
+    }
+}
+
+function update_room(int $id, array $input): array
+{
+    $room = get_room_by_id($id);
+    if (!$room) {
+        return ['ok' => false, 'message' => 'ไม่พบห้องปฏิบัติการที่ต้องการแก้ไข', 'errors' => ['form' => 'ไม่พบห้องปฏิบัติการที่ต้องการแก้ไข']];
+    }
+
+    $validated = validate_room_management_input($input, $id);
+    if (!$validated['ok']) return $validated;
+
+    $user = current_user();
+    $values = $validated['values'];
+    $statement = db()->prepare(
+        'UPDATE rooms
+         SET code = :code, name = :name, building = :building, floor = :floor,
+             status = :status, description = :description, updated_at = :updated_at
+         WHERE id = :id'
+    );
+    $statement->execute([
+        ':code' => $values['code'],
+        ':name' => $values['name'],
+        ':building' => $values['building'],
+        ':floor' => $values['floor'] !== '' ? $values['floor'] : null,
+        ':status' => $values['status'],
+        ':description' => $values['description'] !== '' ? $values['description'] : null,
+        ':updated_at' => utc_now(),
+        ':id' => $id,
+    ]);
+    audit_log('room_updated', 'room', $id, ['before' => $room, 'after' => $values], (int)$user['id']);
+
+    return ['ok' => true, 'id' => $id, 'message' => 'บันทึกการแก้ไขห้องเรียบร้อย'];
+}
+
+function remove_room(int $id): array
+{
+    $user = current_user();
+    if (!$user || $user['role'] !== 'admin') {
+        return ['ok' => false, 'message' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่ลบห้องได้', 'errors' => ['form' => 'เฉพาะผู้ดูแลระบบเท่านั้นที่ลบห้องได้']];
+    }
+
+    $room = get_room_by_id($id);
+    if (!$room) {
+        return ['ok' => false, 'message' => 'ไม่พบห้องปฏิบัติการ', 'errors' => ['form' => 'ไม่พบห้องปฏิบัติการ']];
+    }
+
+    $connection = db();
+    $activeVisit = $connection->prepare('SELECT COUNT(*) FROM room_visits WHERE room_id = :id AND check_out_at IS NULL');
+    $activeVisit->execute([':id' => $id]);
+    $activeUsage = $connection->prepare("SELECT COUNT(*) FROM usage_records WHERE room_id = :id AND status = 'active'");
+    $activeUsage->execute([':id' => $id]);
+    $timezone = new DateTimeZone((string)app_config('app.timezone', 'Asia/Bangkok'));
+    $today = (new DateTimeImmutable('today', $timezone))->format('Y-m-d');
+    $activeSchedule = $connection->prepare("SELECT COUNT(*) FROM course_schedules WHERE room_id = :id AND status = 'active' AND active_until >= :today");
+    $activeSchedule->execute([':id' => $id, ':today' => $today]);
+    $futureClass = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE room_id = :id AND status <> 'cancelled' AND ends_at > :now");
+    $futureClass->execute([':id' => $id, ':now' => utc_now()]);
+
+    if ((int)$activeVisit->fetchColumn() > 0 || (int)$activeUsage->fetchColumn() > 0
+        || (int)$activeSchedule->fetchColumn() > 0 || (int)$futureClass->fetchColumn() > 0) {
+        return [
+            'ok' => false,
+            'message' => 'ยังลบห้องนี้ไม่ได้ เพราะมีการใช้งาน คลาส หรือตารางเรียนที่ยังมีผลอยู่ กรุณาปิดรายการหรือยกเลิกตารางที่เกี่ยวข้องก่อน',
+            'errors' => ['form' => 'ห้องยังมีรายการที่ใช้งานอยู่'],
+        ];
+    }
+
+    $referenceQueries = [
+        'SELECT COUNT(*) FROM course_schedules WHERE room_id = :id',
+        'SELECT COUNT(*) FROM class_sessions WHERE room_id = :id',
+        'SELECT COUNT(*) FROM usage_records WHERE room_id = :id',
+        'SELECT COUNT(*) FROM room_visits WHERE room_id = :id',
+    ];
+    $references = 0;
+    foreach ($referenceQueries as $sql) {
+        $statement = $connection->prepare($sql);
+        $statement->execute([':id' => $id]);
+        $references += (int)$statement->fetchColumn();
+    }
+
+    if ($references > 0) {
+        $statement = $connection->prepare("UPDATE rooms SET status = 'inactive', updated_at = :updated_at WHERE id = :id");
+        $statement->execute([':updated_at' => utc_now(), ':id' => $id]);
+        audit_log('room_archived', 'room', $id, ['code' => $room['code'], 'references' => $references], (int)$user['id']);
+
+        return [
+            'ok' => true,
+            'id' => $id,
+            'archived' => true,
+            'message' => 'ห้องมีประวัติการใช้งาน ระบบจึงปิดใช้งานแทนการลบถาวรเพื่อรักษารายงานย้อนหลัง',
+        ];
+    }
+
+    $statement = $connection->prepare('DELETE FROM rooms WHERE id = :id');
+    $statement->execute([':id' => $id]);
+    audit_log('room_deleted', 'room', $id, ['code' => $room['code']], (int)$user['id']);
+
+    return ['ok' => true, 'id' => $id, 'archived' => false, 'message' => 'ลบห้องปฏิบัติการเรียบร้อย'];
+}
+
 function local_period_bounds(string $period = 'day'): array
 {
     $timezone = new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok'));
@@ -847,7 +1064,7 @@ function register_student_attendance(string $token, array $input): array
     $ownsTransaction = !$connection->inTransaction();
     if ($ownsTransaction) $connection->beginTransaction();
     try {
-        // Serialize capacity/status checks with insert and concurrent close actions.
+        // Serialize status checks with insert and concurrent close actions.
         $lock=$connection->prepare('UPDATE class_sessions SET id=id WHERE id=?');
         $lock->execute([$session['id']]);
         $session=get_public_class_by_token($token);
@@ -860,7 +1077,6 @@ function register_student_attendance(string $token, array $input): array
             $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'สิ้นสุดเวลารับอัตโนมัติแล้ว กรุณาติดต่อผู้สอนเพื่อเปิดรับเพิ่ม',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
             return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
         }
-        if ($session['attendance_count'] >= $session['capacity']) return ['ok'=>false,'message'=>'จำนวนผู้ลงชื่อครบความจุห้องแล้ว','errors'=>['form'=>'จำนวนผู้ลงชื่อครบความจุห้องแล้ว']];
         $now=utc_now();
         $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :request_id, :created_at)');
         $insert->execute([
@@ -1017,9 +1233,6 @@ function create_usage(array $input): array
     }
     if ($room['status'] !== 'available') {
         return ['ok' => false, 'success' => false, 'message' => 'ห้องนี้ยังไม่พร้อมใช้งาน', 'errors' => ['room_id' => 'ห้องนี้ยังไม่พร้อมใช้งาน']];
-    }
-    if ($attendeeCount > (int) $room['capacity']) {
-        return ['ok' => false, 'success' => false, 'message' => 'จำนวนผู้เข้าใช้เกินความจุของห้อง', 'errors' => ['attendee_count' => 'ห้องนี้รองรับได้สูงสุด ' . $room['capacity'] . ' คน']];
     }
 
     $requestId = $requestId !== '' ? $requestId : 'web-' . bin2hex(random_bytes(12));

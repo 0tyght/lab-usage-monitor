@@ -80,7 +80,9 @@ function status_label(string $status): string
         'active' => 'กำลังใช้งาน',
         'completed' => 'เสร็จสิ้น',
         'available' => 'ว่าง',
+        'occupied' => 'กำลังใช้งาน',
         'maintenance' => 'ปิดปรับปรุง',
+        'inactive' => 'ปิดใช้งาน',
         'open' => 'เปิดรับลงชื่อ',
         'closed' => 'ปิดรับแล้ว',
         'draft' => 'แบบร่าง',
@@ -358,6 +360,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'logout') {
         logout_user();
         redirect_to('login');
+    }
+
+    if ($action === 'create_room') {
+        $result = create_room($_POST);
+        if ($result['ok']) {
+            set_flash('success', 'เพิ่มห้องแล้ว', $result['message'] ?? 'เพิ่มห้องปฏิบัติการเรียบร้อย');
+            redirect_to('rooms');
+        }
+        $_SESSION['room_form_errors'] = $result['errors'] ?? ['form' => $result['message'] ?? 'ไม่สามารถเพิ่มห้องได้'];
+        $_SESSION['room_form_input'] = array_intersect_key($_POST, array_flip(['code','name','building','floor','status','description']));
+        redirect_to('rooms', ['new_room' => 1]);
+    }
+
+    if ($action === 'update_room') {
+        $roomId = (int)($_POST['room_id'] ?? 0);
+        $result = update_room($roomId, $_POST);
+        if ($result['ok']) {
+            set_flash('success', 'แก้ไขห้องแล้ว', $result['message'] ?? 'บันทึกข้อมูลห้องเรียบร้อย');
+            redirect_to('rooms');
+        }
+        $_SESSION['room_form_errors'] = $result['errors'] ?? ['form' => $result['message'] ?? 'ไม่สามารถแก้ไขห้องได้'];
+        $_SESSION['room_form_input'] = ['room_id' => $roomId] + array_intersect_key($_POST, array_flip(['code','name','building','floor','status','description']));
+        redirect_to('rooms', ['edit_room' => $roomId]);
+    }
+
+    if ($action === 'delete_room') {
+        $roomId = (int)($_POST['room_id'] ?? 0);
+        $result = remove_room($roomId);
+        set_flash(
+            $result['ok'] ? 'success' : 'error',
+            $result['ok'] ? (!empty($result['archived']) ? 'ปิดใช้งานห้องแล้ว' : 'ลบห้องแล้ว') : 'ลบห้องไม่สำเร็จ',
+            $result['message'] ?? ''
+        );
+        redirect_to('rooms');
     }
 
     if ($action === 'create_class_batch') {
@@ -830,7 +866,7 @@ function render_class_table(array $items, bool $filtered = false): void
                     <td data-label="วันและเวลา"><strong><?= e(thai_datetime($item['starts_at'])) ?></strong><small>ถึง <?= e(thai_datetime($item['ends_at'], false)) ?></small></td>
                     <td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td>
                     <td data-label="ผู้สอน"><?= e($item['lecturer_name']) ?></td>
-                    <td data-label="นักศึกษา"><strong><?= e($item['attendance_count']) ?></strong><small>จาก <?= e($item['capacity']) ?> คน</small></td>
+                    <td data-label="นักศึกษา"><strong><?= e($item['attendance_count']) ?> คน</strong><small>ไม่จำกัดจำนวนผู้ลงชื่อ</small></td>
                     <?php $displayStatus = class_display_status($item); ?>
                     <td data-label="สถานะ"><span class="status status--<?= e($displayStatus) ?>"><span></span><?= e(status_label($displayStatus)) ?></span></td>
                     <td class="table-action"><a class="button button--small button--secondary" href="?page=classes&amp;class_id=<?= e($item['id']) ?>" data-class-id="<?= (int)$item['id'] ?>" aria-haspopup="dialog" aria-controls="class-info-dialog">QR / รายชื่อ</a></td>

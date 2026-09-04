@@ -52,7 +52,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
             <p class="helper-text">พิมพ์เฉพาะป้าย QR และข้อมูลคลาสเรียน ไม่รวมรายชื่อนักศึกษา</p>
         </section>
         <section class="class-panel-attendance" aria-label="รายชื่อผู้ลงชื่อ">
-            <div class="section-heading"><div><h3>ผู้ลงชื่อเข้าเรียน</h3><p><?= count($panelAttendance) ?> / <?= e($panelClass['capacity']) ?> คน</p></div><button class="button button--secondary" type="button" data-refresh-class>รีเฟรชรายชื่อ</button></div>
+            <div class="section-heading"><div><h3>ผู้ลงชื่อเข้าเรียน</h3><p><?= count($panelAttendance) ?> คน · ไม่จำกัดจำนวนผู้ลงชื่อ</p></div><button class="button button--secondary" type="button" data-refresh-class>รีเฟรชรายชื่อ</button></div>
             <?php render_attendance_table($panelAttendance,false); ?>
             <?php if ($panelClass['notes']): ?><p class="inline-note">หมายเหตุ: <?= e($panelClass['notes']) ?></p><?php endif; ?>
         </section>
