@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "status": "online",
-  "origin": "https://rabbit-mirror-increased-void.trycloudflare.com",
-  "gatewayId": "be918d4e30f35745c4c2880b36426cc0",
-  "updatedAt": "2026-09-04T03:13:47.203Z"
+  "status": "offline",
+  "origin": "",
+  "gatewayId": "",
+  "updatedAt": "2026-09-04T04:41:18.145Z"
 }
