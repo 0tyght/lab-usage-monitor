@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "status": "offline",
-  "origin": "",
-  "gatewayId": "",
-  "updatedAt": "2026-09-10T04:22:15.393Z"
+  "status": "online",
+  "origin": "https://rate-effectively-soft-celebration.trycloudflare.com",
+  "gatewayId": "be918d4e30f35745c4c2880b36426cc0",
+  "updatedAt": "2026-09-10T04:23:04.723Z"
 }
