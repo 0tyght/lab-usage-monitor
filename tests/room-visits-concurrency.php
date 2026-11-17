@@ -8,7 +8,7 @@ if (($argv[1] ?? '') === '--worker') {
     if (!$fixture || !str_starts_with($fixture,sys_get_temp_dir().'/lums-room-concurrency-') || !is_file($fixture.'/test-only')) exit(1);
     require dirname(__DIR__).'/src/bootstrap.php';
     for ($i=0;$i<500 && !is_file($fixture.'/go');$i++) usleep(10000);
-    $result=record_room_visit($argv[2],['person_code'=>'RACE'.str_pad($argv[3],4,'0',STR_PAD_LEFT),'person_name'=>'นิสิตสมมติพร้อมกัน','person_role'=>'student','purpose'=>'ทดสอบพร้อมกัน','client_request_id'=>bin2hex(random_bytes(16))],bin2hex(random_bytes(32)));
+    $result=record_room_visit($argv[2],['person_code'=>'RACE'.str_pad($argv[3],4,'0',STR_PAD_LEFT),'person_name'=>'นิสิตสมมติพร้อมกัน','person_role'=>'student','purpose'=>'ทดสอบพร้อมกัน','planned_end_at'=>date('Y-m-d\TH:i',time()+3600),'client_request_id'=>bin2hex(random_bytes(16))],bin2hex(random_bytes(32)));
     echo json_encode($result,JSON_UNESCAPED_UNICODE);
     exit;
 }

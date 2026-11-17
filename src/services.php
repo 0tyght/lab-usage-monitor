@@ -958,6 +958,7 @@ function class_attendance(int $classSessionId): array
 
 function list_attendance_records(array $filters = []): array
 {
+    close_expired_room_usage(db());
     $viewer = current_user();
     $where = [];
     $params = [];
@@ -985,7 +986,7 @@ function list_attendance_records(array $filters = []): array
         }
     }
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at,
+    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at, ar.check_out_at, ar.checkout_method,
                    cs.id AS class_id, cs.course_code, cs.course_name, cs.section,
                    r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name
             FROM attendance_records ar
@@ -1037,11 +1038,13 @@ function attendance_report_query(array $filters): array
 function attendance_report_table(array $items): array
 {
     $timezone = new DateTimeZone((string) app_config('app.timezone', 'Asia/Bangkok'));
-    $headers = ['เวลาลงชื่อ', 'รหัสนักศึกษา', 'ชื่อ–นามสกุล', 'รหัสวิชา', 'ชื่อวิชา', 'กลุ่ม', 'ห้อง', 'ผู้สอน'];
+    $headers = ['เวลาเข้า', 'เวลาออก', 'สถานะออก', 'รหัสนักศึกษา', 'ชื่อ–นามสกุล', 'รหัสวิชา', 'ชื่อวิชา', 'กลุ่ม', 'ห้อง', 'ผู้สอน'];
     $rows = [];
     foreach ($items as $item) {
         $time = (new DateTimeImmutable($item['check_in_at']))->setTimezone($timezone)->format('d/m/Y H:i');
-        $rows[] = [$time, $item['student_code'], $item['student_name'], $item['course_code'], $item['course_name'], $item['section'] ?? '', $item['room_code'], $item['lecturer_name']];
+        $out = !empty($item['check_out_at']) ? (new DateTimeImmutable($item['check_out_at']))->setTimezone($timezone)->format('d/m/Y H:i') : '';
+        $status = ($item['checkout_method'] ?? '') === 'timeout' ? 'Time out (เวลาสิ้นสุดคลาส)' : (($item['checkout_method'] ?? '') === 'self' ? 'ผู้ใช้ยืนยันออก' : 'ไม่มีข้อมูลเวลาออก');
+        $rows[] = [$time, $out, $status, $item['student_code'], $item['student_name'], $item['course_code'], $item['course_name'], $item['section'] ?? '', $item['room_code'], $item['lecturer_name']];
     }
     return ['headers' => $headers, 'rows' => $rows];
 }
@@ -1078,12 +1081,13 @@ function register_student_attendance(string $token, array $input): array
             return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
         }
         $now=utc_now();
-        $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :request_id, :created_at)');
+        $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, checkout_deadline_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :deadline, :request_id, :created_at)');
         $insert->execute([
             ':class_id' => $session['id'],
             ':student_code' => $studentCode,
             ':student_name' => $studentName,
             ':check_in_at' => $now,
+            ':deadline' => $session['ends_at'],
             ':request_id' => $requestId,
             ':created_at' => $now,
         ]);

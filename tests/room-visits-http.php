@@ -52,7 +52,7 @@ db()->prepare("INSERT INTO rooms(code,name,building,floor,capacity,status,qr_tok
 $url='/?page=room-checkin&token='.$token;
 [$status,$html]=$request($url);$expect($status===200 && str_contains($html,'ลงชื่อเข้าใช้ห้องนอกคลาส'),'Public room renders anonymous walk-in form');
 preg_match('/name="client_request_id" value="([^"]+)"/',$html,$m);
-$input=['action'=>'room_visit_start','token'=>$token,'csrf_token'=>$csrf($html),'client_request_id'=>$m[1],'person_code'=>'HTTPQR001','person_name'=>'นิสิตทดสอบ HTTP','person_role'=>'student','purpose'=>'=SUM(1,2)'];
+$input=['action'=>'room_visit_start','token'=>$token,'csrf_token'=>$csrf($html),'client_request_id'=>$m[1],'person_code'=>'HTTPQR001','person_name'=>'นิสิตทดสอบ HTTP','person_role'=>'student','purpose'=>'=SUM(1,2)','planned_end_at'=>date('Y-m-d\TH:i',time()+3600)];
 [$status]=$request($url,array_replace($input,['csrf_token'=>'bad']));$expect($status===303 && (int)db()->query('SELECT COUNT(*) FROM room_visits WHERE room_id='.$room)->fetchColumn()===0,'Invalid CSRF redirects safely without saving');
 [$status,,$redirect]=$request($url,$input);$expect($status===302 && str_contains($redirect,'room-checkin'),'Successful check-in uses post-redirect-get');
 [, $done]=$request($url);$expect(str_contains($done,'คุณลงชื่อเข้าใช้ห้องนี้แล้ว') && str_contains($done,'นิสิตทดสอบ HTTP'),'Own receipt is shown after check-in');
@@ -65,7 +65,9 @@ $expect(db()->query('SELECT check_out_at FROM room_visits WHERE id='.$visit)->fe
 [$status]=$request('/?download=room-visits-csv');$expect($status===302,'Anonymous CSV requests require authentication');
 $cookies=array_filter($ownCookies,static fn($key)=>str_starts_with($key,'lums_visit_'),ARRAY_FILTER_USE_KEY);
 [, $restored]=$request($url);$expect(str_contains($restored,'คุณลงชื่อเข้าใช้ห้องนี้แล้ว'),'Opaque receipt cookie restores check-out after session expiration');
-$request($url,['action'=>'room_visit_end','token'=>$token,'csrf_token'=>$csrf($restored)]);
+$request($url,['action'=>'room_checkout_find','token'=>$token,'csrf_token'=>$csrf($restored),'person_code'=>'HTTPQR001']);
+[, $preview]=$request($url); $expect(str_contains($preview,'ยืนยันออกจากห้อง'),'Checkout previews the selected visit');
+$request($url,['action'=>'room_checkout_confirm','token'=>$token,'csrf_token'=>$csrf($preview),'person_code'=>'HTTPQR001','kind'=>'visit','record_id'=>$visit]);
 [, $ended]=$request($url);$expect(str_contains($ended,'บันทึกเวลาออกแล้ว'),'Self checkout success is visible');
 [, $again]=$request($url.'&new_visit=1');$expect(str_contains($again,'name="person_code"'),'A completed visit can start a new visit');
 preg_match('/name="client_request_id" value="([^"]+)"/',$again,$m);
@@ -85,10 +87,10 @@ $cookies=[];[$status]=$request('/?page=room-checkin&token=bad');$expect($status=
 $admin=(int)db()->query("SELECT id FROM users WHERE email='admin@example.invalid'")->fetchColumn();
 $start=gmdate('Y-m-d\TH:i:s\Z',time()-300);$end=gmdate('Y-m-d\TH:i:s\Z',time()+3600);$classToken=bin2hex(random_bytes(16));
 db()->prepare("INSERT INTO class_sessions(room_id,lecturer_user_id,course_code,course_name,starts_at,ends_at,status,checkin_mode,admission_lead_minutes,qr_token,created_at,updated_at) VALUES (?,?,'HTTP-ROOM-CLASS','ทดสอบคลาสปัจจุบัน',?,?,'open','scheduled',10,?,?,?)")->execute([$room,$admin,$start,$end,$classToken,$now,$now]);$class=(int)db()->lastInsertId();
-[, $current]=$request($url);$expect(str_contains($current,'ลงชื่อเข้าเรียนคลาสนี้') && str_contains($current,$classToken) && !str_contains($current,'name="person_code"'),'Room links to current lesson without outside-class form');
+[, $current]=$request($url);$expect(str_contains($current,'ลงชื่อเข้าเรียนคลาสนี้') && str_contains($current,$classToken) && !str_contains($current,'value="room_visit_start"'),'Room links to current lesson without outside-class form');
 [, $legacy]=$request('/?page=student-checkin&token='.$classToken);$expect(str_contains($legacy,'ทดสอบคลาสปัจจุบัน'),'Existing per-class links continue working');
 db()->prepare("UPDATE class_sessions SET status='closed' WHERE id=?")->execute([$class]);
-[, $closed]=$request($url);$expect(str_contains($closed,'คลาสนี้ยังไม่รับลงชื่อ') && !str_contains($closed,'name="person_code"'),'Closed lesson cannot be bypassed by room QR');
+[, $closed]=$request($url);$expect(str_contains($closed,'คลาสนี้ยังไม่รับลงชื่อ') && !str_contains($closed,'value="room_visit_start"'),'Closed lesson cannot be bypassed by room QR');
 db()->prepare("UPDATE class_sessions SET status='cancelled' WHERE id=?")->execute([$class]);
-[, $cancelled]=$request($url);$expect(str_contains($cancelled,'name="person_code"'),'Cancelled class releases room check-in');
+[, $cancelled]=$request($url);$expect(str_contains($cancelled,'value="room_visit_start"'),'Cancelled class releases room check-in');
 echo "Room visit HTTP: $checks checks passed\n";

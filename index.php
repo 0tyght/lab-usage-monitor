@@ -336,13 +336,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect_to('student-checkin', ['token' => $token]);
     }
 
+    if (in_array($action,['room_checkout_find','room_checkout_confirm'],true)) {
+        $token=(string)($_POST['token'] ?? '');
+        $code=strtoupper(trim((string)($_POST['person_code'] ?? '')));
+        if ($action==='room_checkout_find') {
+            $_SESSION['room_checkout_search']=['token'=>$token,'code'=>$code];
+        } else {
+            $result=confirm_room_checkout($token,$code,(string)($_POST['kind'] ?? ''),(int)($_POST['record_id'] ?? 0));
+            unset($_SESSION['room_checkout_search']);
+            set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกเวลาออกแล้ว':'ยังบันทึกไม่ได้',$result['message'] ?? 'บันทึกเวลาออกเรียบร้อย');
+        }
+        redirect_to('room-checkin',['token'=>$token]);
+    }
+
     if (in_array($action,['room_visit_start','room_visit_end'],true)) {
         $token=(string)($_POST['token'] ?? '');
         $holder=$_SESSION['room_visit_holders'][$token] ?? null;
         if ($action==='room_visit_start') {
             $result=$holder && hash_equals($holder['request'],(string)($_POST['client_request_id'] ?? '')) ? record_room_visit($token,$_POST,$holder['receipt']) : visit_error('แบบฟอร์มหมดอายุ กรุณาเปิดหน้าห้องอีกครั้ง');
             if ($result['ok']) { $_SESSION['room_visit_holders'][$token]['visit_id']=$result['id']; remember_room_visit($token,$holder['receipt']); }
-        } else $result=$holder ? checkout_room_visit($holder['receipt']) : visit_error('ไม่พบรายการของเบราว์เซอร์นี้');
+        } else $result=visit_error('กรุณากรอกรหัสเพื่อยืนยันการออกจากห้อง');
         set_flash($result['ok']?'success':'error',$result['ok']?($action==='room_visit_start'?'บันทึกการเข้าใช้แล้ว':'บันทึกเวลาออกแล้ว'):'ยังบันทึกไม่ได้',$result['message'] ?? '');
         if (!$result['ok']) $_SESSION['room_visit_input']=array_intersect_key($_POST,array_flip(['person_code','person_name','person_role','purpose']));
         redirect_to('room-checkin',['token'=>$token]);
@@ -532,6 +545,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $user = current_user();
 $page = (string) ($_GET['page'] ?? ($user ? 'dashboard' : 'login'));
+if ($user && in_array($page, ['dashboard','rooms','reports','classes'], true)) close_expired_room_usage(db());
 
 if ($page === 'login' && $user) {
     redirect_to('dashboard');
@@ -889,9 +903,10 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
 ?>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th>เวลาลงชื่อ</th><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
+            <thead><tr><th>เวลาลงชื่อ</th><?php if ($showClass): ?><th>เวลาออก / สถานะ</th><?php endif; ?><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
             <tbody><?php foreach ($items as $item): ?><tr>
                 <td data-label="เวลาลงชื่อ"><strong><?= e(thai_datetime($item['check_in_at'])) ?></strong><small>ผ่าน QR Code</small></td>
+                <?php if ($showClass): ?><td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':'ยังไม่มีข้อมูลเวลาออก') ?></small></td><?php endif; ?>
                 <td data-label="รหัสนักศึกษา"><strong><?= e($item['student_code']) ?></strong></td>
                 <td data-label="ชื่อ–นามสกุล"><?= e($item['student_name']) ?></td>
                 <?php if ($showClass): ?><td data-label="รายวิชา"><a class="text-link" data-class-id="<?= (int)$item['class_id'] ?>" href="?page=classes&amp;class_id=<?= e($item['class_id']) ?>"><?= e($item['course_code']) ?></a><small><?= e($item['course_name']) ?></small></td><td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td><?php endif; ?>

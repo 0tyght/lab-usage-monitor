@@ -270,6 +270,7 @@ SQL;
     $connection->exec($schema);
     ensure_sqlite_usage_columns($connection);
     ensure_sqlite_academic_columns($connection);
+    ensure_sqlite_checkout_columns($connection);
     $seeded = $withDemoData ? seed_demo_data($connection) : false;
     if ($withDemoData) {
         seed_academic_schedule_data($connection);
@@ -476,6 +477,26 @@ function seed_production_data(PDO $connection): bool
     }
 
     return true;
+}
+
+function ensure_sqlite_checkout_columns(PDO $connection): void
+{
+    foreach ([
+        'attendance_records' => [
+            'check_out_at' => 'TEXT NULL',
+            'checkout_method' => 'TEXT NULL',
+            'checkout_deadline_at' => 'TEXT NULL',
+        ],
+        'room_visits' => [
+            'planned_end_at' => 'TEXT NULL',
+            'auto_closed_at' => 'TEXT NULL',
+        ],
+    ] as $table => $additions) {
+        $names = array_column($connection->query("PRAGMA table_info($table)")->fetchAll(), 'name');
+        foreach ($additions as $name => $type) {
+            if (!in_array($name, $names, true)) $connection->exec("ALTER TABLE $table ADD COLUMN $name $type");
+        }
+    }
 }
 
 function ensure_sqlite_usage_columns(PDO $connection): void

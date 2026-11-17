@@ -6,6 +6,7 @@ $scanRoom=public_room($roomToken);
 $visitInput=$_SESSION['room_visit_input'] ?? []; unset($_SESSION['room_visit_input']);
 $receipt=null;$roomClasses=[];$legacyPlan=false;
 if ($scanRoom) {
+    close_expired_room_usage(db());
     $holder=$_SESSION['room_visit_holders'][$roomToken] ?? null;
     if (!$holder && isset($_COOKIE['lums_visit_'.$roomToken])) {
         $savedReceipt=(string)$_COOKIE['lums_visit_'.$roomToken];
@@ -25,6 +26,10 @@ if ($scanRoom) {
     $legacyPlan=room_has_legacy_plan((int)$scanRoom['id']);
 }
 if (!$scanRoom) http_response_code(404);
+$checkoutSearch=$_SESSION['room_checkout_search'] ?? null;
+unset($_SESSION['room_checkout_search']);
+$checkoutCode=$checkoutSearch && hash_equals($roomToken,(string)$checkoutSearch['token']) ? (string)$checkoutSearch['code'] : '';
+$checkoutRows=$checkoutCode!=='' ? find_active_checkout($roomToken,$checkoutCode) : [];
 ?>
 <!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>ลงชื่อเข้าใช้ห้อง — LUMS</title><link rel="icon" href="assets/favicon.svg"><link rel="stylesheet" href="<?= e(asset_url('app.css')) ?>"><link rel="stylesheet" href="<?= e(asset_url('room-qr.css')) ?>"></head>
 <body class="student-page"><main class="student-shell"><header class="student-brand"><span class="brand-mark">LU</span><span><strong>LUMS</strong><small>ลงชื่อเข้าใช้ห้องปฏิบัติการ</small></span></header>
@@ -32,10 +37,14 @@ if (!$scanRoom) http_response_code(404);
 <?php else: ?>
 <section class="student-panel"><p class="eyebrow">QR ประจำห้อง</p><h1><?= e($scanRoom['code']) ?></h1><h2><?= e($scanRoom['name']) ?></h2><p><?= e($scanRoom['building'].' · ชั้น '.$scanRoom['floor']) ?></p><p class="helper-text">ตรวจชื่อห้องให้ตรงกับห้องที่กำลังเข้าใช้ · <?= e(thai_datetime(utc_now())) ?></p></section>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>" role="status"><strong><?= e($flash['title']) ?></strong><span><?= e($flash['message']) ?></span></div><?php endif; ?>
+<section class="student-panel"><h2>สแกนออกจากห้อง</h2><p>กรอกรหัสที่ใช้ลงชื่อเข้า แล้วตรวจสอบรายการก่อนยืนยันออก</p>
+<form method="post" class="form-stack"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="token" value="<?= e($roomToken) ?>"><input type="hidden" name="action" value="room_checkout_find"><label class="field"><span>รหัสนิสิต / รหัสบุคลากร</span><input name="person_code" value="<?= e($checkoutCode) ?>" minlength="4" maxlength="30" required></label><button class="button button--secondary button--block" type="submit">ค้นหารายการเพื่อเช็กเอาต์</button></form>
+<?php if ($checkoutCode!=='' && !$checkoutRows): ?><p role="status">ไม่พบรายการที่ยังเปิดอยู่ในห้องนี้ หากหมดเวลาแล้วระบบจะบันทึก Time out อัตโนมัติ</p><?php endif; ?>
+<?php foreach ($checkoutRows as $entry): ?><form method="post" class="form-stack"><p><strong><?= e($entry['name']) ?></strong> · <?= e($entry['purpose']) ?><br>เข้า <?= e(thai_datetime($entry['check_in_at'])) ?> · สิ้นสุด <?= e(thai_datetime($entry['deadline'])) ?></p><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="room_checkout_confirm"><input type="hidden" name="token" value="<?= e($roomToken) ?>"><input type="hidden" name="person_code" value="<?= e($checkoutCode) ?>"><input type="hidden" name="kind" value="<?= e($entry['kind']) ?>"><input type="hidden" name="record_id" value="<?= (int)$entry['id'] ?>"><button class="button button--primary button--block" type="submit">ยืนยันออกจากห้อง</button></form><?php endforeach; ?></section>
 <?php if ($receipt): ?>
 <section class="student-panel"><h2><?= $receipt['check_out_at']?'บันทึกเวลาออกแล้ว':'คุณลงชื่อเข้าใช้ห้องนี้แล้ว' ?></h2><p><?= e($receipt['person_name']) ?> · <?= e($receipt['person_code']) ?></p><p>เข้า <?= e(thai_datetime($receipt['check_in_at'])) ?></p>
-<?php if ($receipt['check_out_at']): ?><p>ออก / ปิดรายการ <?= e(thai_datetime($receipt['check_out_at'])) ?></p><p><?= $receipt['checkout_method']==='admin'?'ผู้ดูแลปิดรายการนี้แล้ว':'ขอบคุณที่บันทึกการใช้ห้อง' ?></p><a class="button button--secondary" href="?page=room-checkin&amp;token=<?= e($roomToken) ?>&amp;new_visit=1">เริ่มการเข้าใช้ครั้งใหม่</a>
-<?php else: ?><p><?= e($receipt['purpose']) ?></p><form method="post"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="token" value="<?= e($roomToken) ?>"><input type="hidden" name="action" value="room_visit_end"><button class="button button--primary button--block" type="submit">ออกจากห้อง</button></form><p class="helper-text">กดเมื่อใช้เสร็จ หรือสแกน QR เดิมด้วยเบราว์เซอร์นี้เพื่อกลับมากดออก หากหาใบยืนยันไม่พบให้ติดต่อผู้ดูแล</p><?php endif; ?></section>
+<?php if ($receipt['check_out_at']): ?><p>ออก / ปิดรายการ <?= e(thai_datetime($receipt['check_out_at'])) ?></p><p><?= !empty($receipt['auto_closed_at'])?'Time out · ระบบปิดรายการตามเวลาที่กำหนด':($receipt['checkout_method']==='admin'?'ผู้ดูแลปิดรายการนี้แล้ว':'ขอบคุณที่บันทึกการใช้ห้อง') ?></p><a class="button button--secondary" href="?page=room-checkin&amp;token=<?= e($roomToken) ?>&amp;new_visit=1">เริ่มการเข้าใช้ครั้งใหม่</a>
+<?php else: ?><p><?= e($receipt['purpose']) ?></p><p class="helper-text">เมื่อใช้ห้องเสร็จ ให้กรอกรหัสในช่องสแกนออกด้านบนเพื่อยืนยันเวลาออก</p><?php endif; ?></section>
 <?php elseif ($scanRoom['status']!=='available'): ?><section class="student-panel"><h2>ห้องนี้งดรับการเข้าใช้ชั่วคราว</h2><p>กรุณาติดต่อผู้ดูแลห้อง</p></section>
 <?php elseif ($roomClasses || $legacyPlan): ?>
 <section class="student-panel"><h2>คลาสในช่วงเวลานี้</h2><p>เลือกคลาสที่คุณกำลังเข้าเรียน ระบบจะบันทึกเข้าคลาสนั้น</p>
@@ -47,6 +56,7 @@ if (!$scanRoom) http_response_code(404);
 <label class="field"><span>ชื่อ–นามสกุล</span><input name="person_name" value="<?= e($visitInput['person_name'] ?? '') ?>" autocomplete="name" minlength="2" maxlength="100" required></label>
 <label class="field"><span>ประเภทผู้เข้าใช้</span><select name="person_role"><?php foreach (['student'=>'นิสิต','lecturer'=>'อาจารย์','staff'=>'บุคลากร'] as $key=>$label): ?><option value="<?= $key ?>" <?= ($visitInput['person_role'] ?? 'student')===$key?'selected':'' ?>><?= $label ?></option><?php endforeach; ?></select></label>
 <label class="field"><span>วัตถุประสงค์การใช้ห้อง</span><input name="purpose" value="<?= e($visitInput['purpose'] ?? '') ?>" placeholder="เช่น ทำโครงงาน ฝึกปฏิบัติ หรือทำงานกลุ่ม" minlength="2" maxlength="255" required></label>
+<label class="field"><span>เวลาที่คาดว่าจะใช้เสร็จ</span><input type="datetime-local" name="planned_end_at" required><small>หากไม่ได้สแกนออก ระบบจะปิดรายการตามเวลานี้และระบุ Time out</small></label>
 <button class="button button--primary button--block" type="submit">ลงชื่อเข้าใช้ห้อง</button></form><p class="privacy-note">ลงชื่อเฉพาะตัวเอง ข้อมูลใช้ติดตามการใช้ห้อง ผู้ดูแลระบบเห็นข้อมูลนี้ การลงชื่อไม่ใช่การอนุมัติเข้าห้อง โปรดปฏิบัติตามระเบียบห้อง</p></section>
 <?php endif; ?>
 <p><a class="button button--secondary button--block" href="?page=room-checkin&amp;token=<?= e($roomToken) ?>">ตรวจสอบห้องอีกครั้ง</a></p><p class="privacy-note">เปิดลิงก์ที่ผู้ดูแลให้ได้โดยไม่ต้องใช้กล้อง หากสแกนไม่ได้ให้เปิดสิทธิ์กล้องของแอปสแกน หรือขอลิงก์หน้าห้องจากผู้ดูแล</p>

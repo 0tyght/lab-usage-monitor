@@ -14,6 +14,7 @@ require_once __DIR__ . '/timetable.php';
 require_once __DIR__ . '/one-off.php';
 require_once __DIR__ . '/class-batch.php';
 require_once __DIR__ . '/room-visits.php';
+require_once __DIR__ . '/checkout.php';
 
 date_default_timezone_set((string) app_config('app.timezone', 'Asia/Bangkok'));
 

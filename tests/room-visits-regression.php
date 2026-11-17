@@ -12,7 +12,7 @@ $expect(public_room('bad')===null && public_room(str_repeat('f',32))===null,'Inv
 $expect((int)public_room($token)['id']===$room,'Stable room token resolves room');
 initialize_database(db(),false);$expect(public_room($token)!==null,'Additive initialization preserves printed room tokens');
 $countClasses=(int)db()->query('SELECT COUNT(*) FROM class_sessions')->fetchColumn();$countUsers=(int)db()->query('SELECT COUNT(*) FROM users')->fetchColumn();
-$input=['person_code'=>'QR001','person_name'=>'ผู้ใช้สมมติ','person_role'=>'student','purpose'=>'ทำโครงงานสมมติ','client_request_id'=>bin2hex(random_bytes(16))];$receipt=bin2hex(random_bytes(32));
+$input=['person_code'=>'QR001','person_name'=>'ผู้ใช้สมมติ','person_role'=>'student','purpose'=>'ทำโครงงานสมมติ','planned_end_at'=>date('Y-m-d\TH:i',time()+3600),'client_request_id'=>bin2hex(random_bytes(16))];$receipt=bin2hex(random_bytes(32));
 $first=record_room_visit($token,$input,$receipt);$expect($first['ok'],'Anonymous visit can start without a class');
 $expect((int)db()->query('SELECT COUNT(*) FROM class_sessions')->fetchColumn()===$countClasses && (int)db()->query('SELECT COUNT(*) FROM users')->fetchColumn()===$countUsers,'No fake class or user account is created');
 $expect(record_room_visit($token,$input,$receipt)['duplicate'],'Retry of same request is idempotent');
