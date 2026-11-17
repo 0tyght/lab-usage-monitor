@@ -10,3 +10,14 @@ compose*.yaml
 README.md
 docs
 pages
+.artifacts
+.codex-finalizer
+output
+tools
+.agents
+.codex
+# Unintegrated v2 drafts; remove these exclusions when those files are adopted.
+src/usage-v2.php
+views/user-report.php
+tests/lums-v2-http.php
+tests/lums-v2-regression.php

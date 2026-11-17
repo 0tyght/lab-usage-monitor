@@ -21,6 +21,7 @@ RUN chmod +x /usr/local/bin/lums-entrypoint \
     && a2enconf lums-servername
 
 EXPOSE 80
+STOPSIGNAL SIGTERM
 
 ENTRYPOINT ["lums-entrypoint"]
 CMD ["apache2-foreground"]
