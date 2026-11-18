@@ -13,9 +13,18 @@ async function start() {
   const previous = localRuntime();
   if (previous?.status === 'online' && previous.gatewayId === values.LUMS_GATEWAY_ID
       && await healthy('http://127.0.0.1:8088', values.LUMS_GATEWAY_ID) && await healthy(previous.origin, values.LUMS_GATEWAY_ID)) {
+    console.log('LUMS is online; rebuilding the app to apply current project changes...');
+    await compose('up', '--build', '-d', '--wait', '--wait-timeout', '120', 'app');
     await compose('exec', '-T', 'app', 'php', 'scripts/online-preflight.php');
+    if (!await healthy('http://127.0.0.1:8088', values.LUMS_GATEWAY_ID)) throw new Error('Updated app health check failed.');
+    let publicReady = false;
+    for (let attempt=0; attempt<15; attempt++) {
+      if (await healthy(previous.origin, values.LUMS_GATEWAY_ID)) { publicReady = true; break; }
+      await delay(2000);
+    }
+    if (!publicReady) throw new Error('App was updated, but its existing public tunnel is unreachable. Run stop-online.ps1 and start-online.ps1 again.');
     publishRuntime(previous);
-    console.log(`LUMS is already online: ${PAGES_URL}`);
+    console.log(`LUMS is updated and online: ${PAGES_URL}`);
     return;
   }
   let started = false;
