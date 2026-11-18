@@ -63,7 +63,7 @@ $roomStatusOptions = [
     <?php endif; ?>
 </header>
 
-<form method="get" class="filter-bar">
+<form method="get" class="filter-bar room-search">
     <input type="hidden" name="page" value="rooms">
     <label class="field">
         <span>ค้นหาห้อง</span>
@@ -83,7 +83,7 @@ $roomStatusOptions = [
 <?php endif; ?>
 
 <div class="table-wrap">
-    <table class="data-table">
+    <table class="data-table room-management-table">
         <thead>
             <tr>
                 <th>ห้องปฏิบัติการ</th>
@@ -96,22 +96,22 @@ $roomStatusOptions = [
         <tbody>
         <?php foreach ($rooms as $room): ?>
             <tr>
-                <td>
+                <td data-label="ห้องปฏิบัติการ">
                     <strong><?= e($room['code']) ?></strong>
                     <small><?= e($room['name']) ?></small>
                 </td>
-                <td><?= e($room['building'].' · ชั้น '.($room['floor'] ?: '—')) ?></td>
-                <td>
+                <td data-label="ตำแหน่ง"><?= e($room['building'].' · ชั้น '.($room['floor'] ?: '—')) ?></td>
+                <td data-label="สถานะห้อง">
                     <?= e($room['status'] === 'available'
                         ? ($room['live_status'] === 'active' ? 'มีคลาสตามตาราง' : 'พร้อมรับการเข้าใช้')
                         : status_label($room['status'])) ?>
                 </td>
-                <td>
+                <td data-label="นอกคลาสที่ยังไม่กดออก">
                     <?= (int)($activeVisits[$room['id']] ?? 0) ?> คน
                     <small>ไม่จำกัดจำนวนผู้ลงชื่อ</small>
                 </td>
-                <td>
-                    <div class="button-group">
+                <td data-label="การดำเนินการ">
+                    <div class="room-table-actions">
                         <?php if ($room['status'] !== 'inactive'): ?>
                             <a class="button button--secondary" href="?page=rooms&amp;qr_room=<?= $room['id'] ?>" aria-haspopup="dialog">QR หน้าห้อง / พิมพ์</a>
                         <?php endif; ?>

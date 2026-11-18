@@ -763,7 +763,6 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
             <header class="topbar">
                 <button class="icon-button mobile-menu-button" type="button" data-mobile-nav aria-controls="sidebar" aria-expanded="false" aria-label="เปิดเมนู"><span data-icon="menu"></span></button>
                 <div class="topbar-context"><strong><?= e($nav[$navPage][0] ?? 'LUMS') ?></strong><span><?= e(date('d/m/Y')) ?></span></div>
-                <?php if (!in_array($page,['schedule','calendar','classes'],true)): ?><a class="button button--primary button--compact" href="?page=classes&amp;new_once=1"><span data-icon="plus" aria-hidden="true"></span>สร้างคลาสเรียน</a><?php endif; ?>
             </header>
             <main id="main-content" class="content <?= $page === 'schedule' ? 'content--schedule' : '' ?>">
                 <?php if ($flash): ?>

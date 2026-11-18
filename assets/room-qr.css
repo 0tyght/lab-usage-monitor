@@ -46,3 +46,18 @@
 
 .room-checkout summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
 .room-checkout summary:focus-visible { outline: 3px solid var(--brand-600); outline-offset: 3px; }
+
+.room-search .field { flex: 1 1 280px; max-width: 520px; }
+.room-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+.room-table-actions .text-link, .room-table-actions .text-button { display: inline-flex; align-items: center; min-height: 44px; }
+.room-table-actions form { margin: 0; }
+
+@media (min-width: 641px) {
+  .room-management-table { min-width: 0; table-layout: fixed; }
+  .room-management-table td, .room-management-table th { overflow-wrap: anywhere; }
+  .room-management-table th:nth-child(1) { width: 17%; }
+  .room-management-table th:nth-child(2) { width: 19%; }
+  .room-management-table th:nth-child(3) { width: 15%; }
+  .room-management-table th:nth-child(4) { width: 14%; }
+  .room-management-table th:nth-child(5) { width: 35%; }
+}

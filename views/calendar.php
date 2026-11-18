@@ -3,6 +3,7 @@ $calendarFilters = planning_filters(['month'=>$_GET['month'] ?? date('Y-m'),'sou
 $calendarMonth = new DateTimeImmutable($calendarFilters['month'] . '-01');
 $gridStart = $calendarMonth->modify('monday this week');
 $gridEnd = $calendarMonth->modify('last day of this month')->modify('sunday this week');
+$calendarWeeks = (int)(($gridStart->diff($gridEnd)->days + 1) / 7);
 $calendarRooms = list_rooms();
 $calendarErrors = $calendarFilters['errors'];
 $calendarRows = [];
@@ -25,11 +26,11 @@ $calendarCloseUrl = '?' . http_build_query($calendarQuery);
 $calendarExport = ['date_from'=>$calendarMonth->format('Y-m-d'),'date_to'=>$calendarMonth->modify('last day of this month')->format('Y-m-d'),'source'=>'all'];
 ?>
 <section class="calendar-page">
-<header class="page-header"><div><p class="eyebrow">ภาพรวมทุกห้องตามสิทธิ์ของคุณ</p><h1>ปฏิทินการใช้ห้อง</h1><p>คลิกหรือแตะวันที่เพื่อดูตารางรายวันและเลือกห้อง · ใช้เมาส์ชี้เพื่อดูสรุป</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog">สร้างคลาสเรียน</a><a class="button button--secondary" href="?<?= e(http_build_query(['download'=>'report-csv']+$calendarExport)) ?>" title="ส่งออกเดือนที่แสดงบนปฏิทิน">ส่งออก CSV</a><button class="button button--secondary" type="button" data-print-calendar>พิมพ์ปฏิทิน</button></div></header>
+<header class="page-header"><div><h1>ปฏิทินการใช้ห้อง</h1><p>คลิกหรือแตะวันที่เพื่อดูตารางรายวันและเลือกห้อง · ใช้เมาส์ชี้เพื่อดูสรุป</p></div><div class="schedule-header-actions"><a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog">สร้างคลาสเรียน</a><a class="button button--secondary" href="?<?= e(http_build_query(['download'=>'report-csv']+$calendarExport)) ?>" title="ส่งออกเดือนที่แสดงบนปฏิทิน">ส่งออก CSV</a><button class="button button--secondary" type="button" data-print-calendar>พิมพ์ปฏิทิน</button></div></header>
 <?php if ($calendarErrors): ?><div class="alert alert--error" role="alert"><?= e(implode(' ', $calendarErrors)) ?><a href="<?= e($calendarCloseUrl) ?>">ลองอีกครั้ง</a></div><?php else: ?>
 <div class="calendar-toolbar"><div class="button-group"><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>$calendarMonth->modify('-1 month')->format('Y-m')]))) ?>" aria-label="เดือนก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>date('Y-m')]))) ?>">เดือนนี้</a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($calendarQuery, ['month'=>$calendarMonth->modify('+1 month')->format('Y-m')]))) ?>" aria-label="เดือนถัดไป"><span data-icon="chevron-right"></span></a></div><h2><?= e(thai_month_label($calendarFilters['month'])) ?></h2><span class="result-count">เวลาไทย (UTC+7)</span></div>
 <p class="calendar-legend"><span><i class="calendar-dot"></i>มีรายการตามแผนหรือคลาส</span><span>ตัวเลข = จำนวนรายการในวันนั้น</span></p>
-<div class="month-grid" aria-label="ปฏิทินรายเดือน">
+<div class="month-grid" style="--calendar-weeks: <?= $calendarWeeks ?>" aria-label="ปฏิทินรายเดือน">
     <?php foreach (['จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.', 'อา.'] as $dayLabel): ?><div class="month-weekday"><?= e($dayLabel) ?></div><?php endforeach; ?>
     <?php for ($day=$gridStart; $day <= $gridEnd; $day=$day->modify('+1 day')):
         $date = $day->format('Y-m-d'); $dayEvents = $calendarDays[$date] ?? [];
@@ -52,7 +53,7 @@ $calendarExport = ['date_from'=>$calendarMonth->format('Y-m-d'),'date_to'=>$cale
     <div class="term-dialog__body day-dialog__body">
         <form method="get" class="day-room-filter" data-day-filter>
             <?php foreach ($calendarQuery as $key=>$value): ?><input type="hidden" name="<?= e($key) ?>" value="<?= e($value) ?>"><?php endforeach; ?><input type="hidden" name="date" value="<?= e($dayDate) ?>">
-            <label class="field"><span>ห้องที่ต้องการดู</span><select name="day_room_id"><option value="0">ทุกห้อง</option><?php foreach ($calendarRooms as $r): ?><option value="<?= $r['id'] ?>" <?= $dayRoomId===$r['id']?'selected':'' ?>><?= e($r['code'].' — '.$r['name']) ?></option><?php endforeach; ?></select></label><button class="button button--secondary" type="submit">แสดงห้อง</button>
+            <label class="field"><span>ห้องที่ต้องการดู</span><select name="day_room_id"><option value="0">ทุกห้อง</option><?php foreach ($calendarRooms as $r): ?><option value="<?= $r['id'] ?>" <?= $dayRoomId===$r['id']?'selected':'' ?>><?= e($r['code'].' — '.$r['name']) ?></option><?php endforeach; ?></select></label><noscript><button class="button button--secondary" type="submit">แสดงห้อง</button></noscript>
         </form>
         <p data-day-count aria-live="polite"><?= count($dayRows) ?> รายการ</p>
         <p class="print-room-context" data-day-print-room>ห้อง: <?= e($dayRoomId ? array_values(array_filter($calendarRooms,static fn(array $r): bool => $r['id']===$dayRoomId))[0]['code'] : 'ทุกห้อง') ?></p>
