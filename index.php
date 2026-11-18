@@ -903,10 +903,10 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
 ?>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th>เวลาลงชื่อ</th><?php if ($showClass): ?><th>เวลาออก / สถานะ</th><?php endif; ?><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
+            <thead><tr><th>เวลาลงชื่อ</th><th>เวลาออก / สถานะ</th><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
             <tbody><?php foreach ($items as $item): ?><tr>
                 <td data-label="เวลาลงชื่อ"><strong><?= e(thai_datetime($item['check_in_at'])) ?></strong><small>ผ่าน QR Code</small></td>
-                <?php if ($showClass): ?><td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':'ยังไม่มีข้อมูลเวลาออก') ?></small></td><?php endif; ?>
+                <td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':'ยังไม่มีข้อมูลเวลาออก') ?></small></td>
                 <td data-label="รหัสนักศึกษา"><strong><?= e($item['student_code']) ?></strong></td>
                 <td data-label="ชื่อ–นามสกุล"><?= e($item['student_name']) ?></td>
                 <?php if ($showClass): ?><td data-label="รายวิชา"><a class="text-link" data-class-id="<?= (int)$item['class_id'] ?>" href="?page=classes&amp;class_id=<?= e($item['class_id']) ?>"><?= e($item['course_code']) ?></a><small><?= e($item['course_name']) ?></small></td><td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td><?php endif; ?>

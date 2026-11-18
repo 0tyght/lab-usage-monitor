@@ -61,7 +61,7 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
         <?php if ($outsideTerm): ?><div class="schedule-notice">สัปดาห์นี้อยู่นอกภาค <?= e($term['name']) ?> จะแสดงเฉพาะคลาสเรียนแบบครั้งเดียว <a href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>$term['starts_on']]))) ?>">ไปสัปดาห์แรกของภาค</a></div><?php endif; ?>
         <section class="schedule-calendar-panel" aria-labelledby="weekly-calendar-title">
             <div class="schedule-table-heading"><h2 id="weekly-calendar-title"><?= $selectedRoom ? e($selectedRoom['code'].' · '.$selectedRoom['name']) : 'ตารางประจำสัปดาห์ · ทุกห้อง' ?></h2><span class="result-count"><?= count($events) ?> รายการ</span></div>
-            <div class="schedule-instructions"><p id="timetable-instructions">เลือกเวลา: คลิกช่องเริ่ม → ช่องสุดท้ายในวันเดียวกัน · คลิกรายวิชาเพื่อดูรายละเอียด</p><div class="schedule-legend"><span><i class="legend-swatch"></i>ตารางรายสัปดาห์</span><span><i class="legend-swatch legend-swatch--once"></i>คลาสครั้งเดียว</span></div></div>
+            <div class="schedule-instructions"><p id="timetable-instructions">เลือกเวลา: คลิกช่องเริ่ม → ช่องสุดท้ายในวันเดียวกัน · คลิกหรือแตะรายวิชาเพื่อดูรายละเอียด · เลื่อนตารางซ้าย–ขวาเพื่อดูเวลาทั้งหมด</p><div class="schedule-legend"><span><i class="legend-swatch"></i>ตารางรายสัปดาห์</span><span><i class="legend-swatch legend-swatch--once"></i>คลาสครั้งเดียว</span></div></div>
             <p class="schedule-notice" data-timetable-stale hidden>ตัวเลือกเปลี่ยนแล้ว กด “แสดงตาราง” เพื่ออัปเดตก่อนเลือกเวลา</p>
             <?php if ($loadError): ?><div class="alert alert--error" role="alert">โหลดตารางไม่สำเร็จ <a href="<?= e($scheduleReturnUrl) ?>">ลองอีกครั้ง</a></div>
             <?php else: ?>

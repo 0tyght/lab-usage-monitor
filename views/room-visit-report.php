@@ -7,14 +7,14 @@ $pages=max(1,(int)ceil(count($report['rows'])/50));$pageNo=min($pages,max(1,(int
 $visible=$printing?$report['rows']:array_slice($report['rows'],($pageNo-1)*50,50,true);
 ?>
 <section class="usage-report <?= $printing?'is-print-view':'' ?>">
-<header class="section-heading report-section-heading"><div><h2>การเข้าใช้นอกคลาส</h2><p>ข้อมูลจาก QR ประจำห้อง · แยกจากเวลาในตารางเรียน</p></div><?php if (!$report['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" target="_blank" rel="noopener" href="?<?= e(http_build_query($query+['print'=>1])) ?>">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'room-visits-csv']+room_visit_report_query($vf))) ?>">ส่งออก CSV</a></div><?php endif; ?></header>
+<header class="section-heading report-section-heading"><div><h2>การเข้าใช้นอกคลาส</h2><p>เวลาเข้า–ออกของแต่ละคนจาก QR ประจำห้อง · Time out เป็นเวลาที่กำหนด ไม่ใช่เวลาออกจริง</p></div><?php if (!$report['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" target="_blank" rel="noopener" href="?<?= e(http_build_query($query+['print'=>1])) ?>">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'room-visits-csv']+room_visit_report_query($vf))) ?>">ส่งออก CSV</a></div><?php endif; ?></header>
 <form method="get" class="report-filters" data-report-filters>
 <input type="hidden" name="page" value="reports"><input type="hidden" name="tab" value="walkins">
 <label class="field"><span>เข้าใช้ตั้งแต่วันที่</span><input type="date" name="date_from" value="<?= e($vf['date_from']) ?>" required></label>
 <label class="field"><span>เข้าใช้ถึงวันที่</span><input type="date" name="date_to" value="<?= e($vf['date_to']) ?>" required></label>
 <label class="field"><span>ห้องปฏิบัติการ</span><select name="room_id"><option value="0">ทุกห้อง</option><?php foreach (list_rooms() as $r): ?><option value="<?= $r['id'] ?>" <?= $r['id']===$vf['room_id']?'selected':'' ?>><?= e($r['code']) ?></option><?php endforeach; ?></select></label>
 <label class="field"><span>สถานะการออก</span><select name="visit_status"><?php foreach ($visitLabels as $key=>$label): ?><option value="<?= $key ?>" <?= $key===$vf['visit_status']?'selected':'' ?>><?= $label ?></option><?php endforeach; ?></select></label>
-<details class="report-options" open><summary>เวลาเข้า คำค้น และหน่วยรายงาน</summary><div class="report-advanced-grid">
+<details class="report-options"><summary>เวลาเข้า คำค้น และหน่วยรายงาน</summary><div class="report-advanced-grid">
 <label class="field"><span>เวลาเข้าตั้งแต่</span><input type="time" name="time_from" value="<?= e($vf['time_from']) ?>" required></label>
 <label class="field"><span>เวลาเข้าก่อน</span><input name="time_to" value="<?= e($vf['time_to']) ?>" pattern="([01][0-9]|2[0-3]):[0-5][0-9]|24:00" required><small>24:00 = สิ้นวัน</small></label>
 <label class="field"><span>ค้นหารหัส ชื่อ หรือวัตถุประสงค์</span><input name="q" value="<?= e($vf['q']) ?>" maxlength="100"></label>

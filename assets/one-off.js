@@ -18,7 +18,7 @@
     field('slots_json').value=JSON.stringify(slots);
     q('[data-slot-count]').textContent=String(slots.length);
     const preset=catalog[field('academic_year').value]?.terms[field('semester').value];
-    q('[data-class-term-dates]').textContent=preset?'ช่วงภาคเรียน '+formatDate(preset.start)+' – '+formatDate(preset.end)+' · วันที่กำหนดไว้แล้ว ไม่ต้องเพิ่มภาคการศึกษาแยก':'ยังไม่มีข้อมูลวันภาคเรียนนี้';
+    q('[data-class-term-dates]').textContent=preset?'ช่วงภาคเรียน '+formatDate(preset.start)+' – '+formatDate(preset.end)+' · วันที่กำหนดไว้แล้ว ไม่ต้องเพิ่มภาคการศึกษาแยก' + (preset.end < new Date(Date.now() + 7*60*60*1000).toISOString().slice(0,10) ? ' · ภาคเรียนนี้สิ้นสุดแล้ว โปรดตรวจสอบก่อนสร้าง' : ''):'ยังไม่มีข้อมูลวันภาคเรียนนี้';
     let count=slots.length,first='',last='';
     if(semester() && preset){
       count=0;

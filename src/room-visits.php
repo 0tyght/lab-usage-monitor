@@ -4,7 +4,7 @@ declare(strict_types=1);
 /** A room token is a stable public locator, never authorization to see a roster. */
 function public_room(string $token): ?array
 {
-    if (!preg_match('/^[a-f0-9]{32}$/D',$token)) return null;
+    if (!preg_match('/^(?:(?:room-)?[a-f0-9]{32}|lums-(?:cpe-101|cpe-204|ee-301|iot-401|cpe-305)-demo)$/D',$token)) return null;
     $query=db()->prepare('SELECT id,code,name,building,floor,capacity,status,qr_token FROM rooms WHERE qr_token=?');
     $query->execute([$token]);
     return $query->fetch() ?: null;
@@ -88,7 +88,7 @@ function record_room_visit(string $token, array $input, string $receipt): array
     $planned=local_datetime_to_utc((string)($input['planned_end_at'] ?? ''));
     if (!$planned || strtotime($planned)<=time() || strtotime($planned)>time()+86400) return visit_error('กรุณาระบุเวลาสิ้นสุดที่คาดไว้ ภายใน 24 ชั่วโมงข้างหน้า');
     if (!preg_match('/^[A-Z0-9._-]{4,30}$/D',$code) || text_length($name)<2 || text_length($name)>100 || text_length($purpose)<2 || text_length($purpose)>255 || !in_array($role,['student','lecturer','staff'],true)) return visit_error('กรอกรหัส ชื่อ ประเภทผู้ใช้ และวัตถุประสงค์ให้ครบและถูกต้อง');
-    if (!preg_match('/^[a-f0-9]{32}$/D',$request) || !preg_match('/^[a-f0-9]{64}$/D',$receipt)) return visit_error('แบบฟอร์มหมดอายุ กรุณาสแกนหรือเปิดหน้าห้องใหม่');
+    if (!preg_match('/^(?:(?:room-)?[a-f0-9]{32}|lums-(?:cpe-101|cpe-204|ee-301|iot-401|cpe-305)-demo)$/D',$request) || !preg_match('/^[a-f0-9]{64}$/D',$receipt)) return visit_error('แบบฟอร์มหมดอายุ กรุณาสแกนหรือเปิดหน้าห้องใหม่');
     $connection=db(); $connection->beginTransaction();
     try {
         $connection->exec('UPDATE rooms SET id=id WHERE id='.(int)$room['id']);

@@ -952,7 +952,8 @@ function close_class_session(int $id): array
 
 function class_attendance(int $classSessionId): array
 {
-    $statement = db()->prepare('SELECT id, student_code, student_name, check_in_at FROM attendance_records WHERE class_session_id = :class_id ORDER BY check_in_at DESC, id DESC');
+    close_expired_room_usage(db());
+    $statement = db()->prepare('SELECT id, student_code, student_name, check_in_at, check_out_at, checkout_method FROM attendance_records WHERE class_session_id = :class_id ORDER BY check_in_at DESC, id DESC');
     $statement->execute([':class_id' => $classSessionId]);
     $rows = $statement->fetchAll();
     foreach ($rows as &$row) $row['id'] = (int) $row['id'];

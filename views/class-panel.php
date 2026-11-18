@@ -9,7 +9,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
 ?>
 <div class="class-panel-content" data-panel-class="<?= $panelClass['id'] ?>" data-course-code="<?= e($panelClass['course_code']) ?>">
     <div class="class-panel-meta">
-        <p class="inline-note">นักศึกษาสแกน QR หน้าห้อง แล้วเลือกคลาสนี้ได้ <a class="text-link" href="?page=rooms&amp;qr_room=<?= $panelClass['room_id'] ?>">เปิด QR ประจำห้อง / พิมพ์ป้าย</a></p>
+        <p class="inline-note">นักศึกษาสแกน QR ประจำห้องเพื่อเข้าและออก</p><p><a class="button button--primary" href="?page=rooms&amp;qr_room=<?= $panelClass['room_id'] ?>">เปิด QR ประจำห้อง / พิมพ์ป้าย</a></p>
         <h3><?= e($panelClass['course_code'].' · '.$panelClass['course_name']) ?></h3>
         <p><?= e($panelClass['room_code'].' — '.$panelClass['room_name']) ?></p>
         <p><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
@@ -34,7 +34,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
     </section>
     <p><a class="button button--secondary" href="?page=classes&edit_class=<?= $panelClass['id'] ?>">แก้ไข / ยกเลิกคลาสเรียน</a></p>
     <div class="class-panel-columns">
-        <section class="class-qr-section" aria-label="QR สำหรับคลาส">
+        <details class="class-qr-section" aria-label="QR เฉพาะคลาสเดิม"><summary>ตัวเลือกเพิ่มเติม: QR เฉพาะคลาสเดิม</summary>
             <p class="helper-text">QR เฉพาะคลาสเดิม · ใช้ส่งลิงก์ตรงได้ หากติดหน้าห้องให้ใช้ QR ประจำห้องด้านบน</p>
             <div class="class-qr-poster" data-qr-poster>
                 <p class="qr-print-label">LUMS · สแกนเพื่อลงชื่อเข้าเรียน</p>
@@ -50,7 +50,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
             <label class="field"><span>ลิงก์ลงชื่อสำหรับนักศึกษา</span><input data-class-link value="<?= e($panelStudentUrl) ?>" readonly></label>
             <button class="button button--secondary" type="button" data-class-copy>คัดลอกลิงก์</button>
             <p class="helper-text">พิมพ์เฉพาะป้าย QR และข้อมูลคลาสเรียน ไม่รวมรายชื่อนักศึกษา</p>
-        </section>
+        </details>
         <section class="class-panel-attendance" aria-label="รายชื่อผู้ลงชื่อ">
             <div class="section-heading"><div><h3>ผู้ลงชื่อเข้าเรียน</h3><p><?= count($panelAttendance) ?> คน · ไม่จำกัดจำนวนผู้ลงชื่อ</p></div><button class="button button--secondary" type="button" data-refresh-class>รีเฟรชรายชื่อ</button></div>
             <?php render_attendance_table($panelAttendance,false); ?>

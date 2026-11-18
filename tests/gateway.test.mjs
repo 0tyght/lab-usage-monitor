@@ -8,6 +8,8 @@ const runtime = { schemaVersion: 1, status: 'online', origin: 'https://unit-test
 const response = (data, status = 200) => ({ ok: status === 200, status, json: async () => data });
 
 test('permanent room QR survives tunnel changes without leaking other query fields', async () => {
+  for (const roomToken of [`room-${token}`, 'lums-cpe-101-demo']) assert.equal(classQuery(`?page=room-checkin&token=${roomToken}`), `?page=room-checkin&token=${roomToken}`);
+  assert.throws(() => classQuery(`?page=student-checkin&token=room-${token}`));
   assert.equal(classQuery(`?page=room-checkin&token=${token}&person_name=private`), `?page=room-checkin&token=${token}`);
   for (const query of [`?page=room-checkin&token=${token}&token=${token}`, '?page=room-checkin&token=bad', `?page=room-checkin&page=student-checkin&token=${token}`]) assert.throws(() => classQuery(query));
   for (const name of ['old-room', 'new-room']) {

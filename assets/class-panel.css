@@ -3,8 +3,10 @@
 .class-panel-meta { padding-bottom: 16px; margin-bottom: 20px; border-bottom: 1px solid var(--border); }
 .class-panel-meta h3 { font-size: 20px; margin: 0 0 8px; }
 .class-panel-meta p { margin: 4px 0; font-size: 13px; }
-.class-panel-columns { display: grid; grid-template-columns: minmax(300px,.9fr) minmax(0,1.1fr); gap: 32px; }
-.class-qr-section { display: grid; align-content: start; gap: 12px; }
+.class-panel-columns { display: flex; flex-direction: column; gap: 24px; }
+.class-panel-attendance { order: -1; }
+.class-qr-section summary { min-height: 44px; padding: 12px 0; cursor: pointer; font-weight: 600; }
+.class-qr-section[open] > * + * { margin-top: 12px; }
 .class-qr-poster { text-align: center; background: white; color: #17212b; }
 .class-qr-poster h3, .class-qr-poster > [data-poster-room], .class-qr-poster > [data-poster-time], .qr-print-label { display: none; }
 .class-qr-code { width: 280px; max-width: 100%; margin: 0 auto; padding: 24px; background: white; }

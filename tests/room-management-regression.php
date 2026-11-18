@@ -33,6 +33,10 @@ $created=create_room([
 $expect($created['ok'],'Admin can add a room without entering capacity');
 $room=get_room_by_id((int)$created['id']);
 $expect($room && $room['code']==='LAB-X1','New room can be read back');
+$roomTokenQuery=db()->prepare('SELECT qr_token FROM rooms WHERE id=?');
+$roomTokenQuery->execute([(int)$created['id']]);
+$expect((int)(public_room((string)$roomTokenQuery->fetchColumn())['id'] ?? 0)===(int)$created['id'],'A newly created room QR resolves without replacing its token');
+$expect(public_room('lums-cpe-101-demo')!==null,'Existing demo room QR remains usable');
 $expect((int)$room['capacity']===1,'Legacy capacity column remains internal compatibility metadata only');
 
 $duplicate=create_room([

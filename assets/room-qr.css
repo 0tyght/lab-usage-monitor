@@ -43,3 +43,6 @@
   body.printing-room-qr .term-dialog__body { overflow: visible; }
   body.printing-room-qr .room-qr-poster [data-room-qr] { width: 90mm; }
 }
+
+.room-checkout summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
+.room-checkout summary:focus-visible { outline: 3px solid var(--brand-600); outline-offset: 3px; }

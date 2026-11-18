@@ -15,7 +15,14 @@ if (!isset($_SESSION['one_off_requests'][$onceRequest]) || $_SESSION['one_off_re
 }
 $catalog=nu_academic_presets();
 $contextTerm=get_academic_term((int)($_GET['term_id'] ?? 0));
-$onceValues=array_replace(['class_mode'=>'once','academic_year'=>$contextTerm['academic_year'] ?? array_key_first($catalog),'semester'=>$contextTerm['semester'] ?? '1','class_date'=>$_GET['once_date'] ?? date('Y-m-d'),'room_id'=>$_GET['room_id'] ?? '','lecturer_user_id'=>$user['id'],'course_code'=>'','course_name'=>'','section'=>'','notes'=>'','slots_json'=>'[]'],$onceInput);
+// Prefer the current official term, then the next one; never invent calendar dates.
+$today=date('Y-m-d'); $catalogTerms=[];
+foreach ($catalog as $year=>$item) foreach ($item['terms'] as $semester=>$dates) $catalogTerms[]=['year'=>$year,'semester'=>$semester,'start'=>$dates['start'],'end'=>$dates['end']];
+usort($catalogTerms, static fn($a,$b)=>strcmp($a['start'],$b['start']));
+$defaultCatalogTerm=null;
+foreach ($catalogTerms as $candidate) if ($candidate['end'] >= $today) { $defaultCatalogTerm=$candidate; break; }
+$defaultCatalogTerm ??= end($catalogTerms) ?: ['year'=>array_key_first($catalog),'semester'=>'1'];
+$onceValues=array_replace(['class_mode'=>'once','academic_year'=>$contextTerm['academic_year'] ?? $defaultCatalogTerm['year'],'semester'=>$contextTerm['semester'] ?? $defaultCatalogTerm['semester'],'class_date'=>$_GET['once_date'] ?? date('Y-m-d'),'room_id'=>$_GET['room_id'] ?? '','lecturer_user_id'=>$user['id'],'course_code'=>'','course_name'=>'','section'=>'','notes'=>'','slots_json'=>'[]'],$onceInput);
 $onceRooms=array_values(array_filter(list_rooms(),static fn($r)=>$r['status']==='available'));
 ?>
 <dialog id="one-off-dialog" class="term-dialog class-create-dialog" aria-labelledby="one-off-title" <?= isset($_GET['new_once']) || isset($_GET['new_schedule']) || isset($_GET['new_term']) || $onceErrors?'open':'' ?>>
