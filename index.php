@@ -629,7 +629,7 @@ if ($page === 'student-checkin'):
                     <div class="student-success"><span data-icon="circle-check-big"></span><h2 id="attendance-title"><?= !empty($attendanceReceipt['duplicate']) ? 'ลงชื่อในคลาสนี้ไว้แล้ว' : 'บันทึกเรียบร้อยแล้ว' ?></h2><p>รหัสนักศึกษา <?= e($attendanceReceipt['student_code']) ?><br>คุณสามารถปิดหน้านี้ได้ ไม่ต้องลงชื่อซ้ำ</p></div>
                 <?php else: ?>
                     <?php $waitingToOpen = in_array(class_checkin_status($classSession),['draft','scheduled'],true); $autoEnded=class_checkin_status($classSession)==='overdue'; ?>
-                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : ($autoEnded?'สิ้นสุดเวลารับอัตโนมัติ':'ปิดรับการลงชื่อแล้ว') ?></h2><p><?= $waitingToOpen ? ((int)($classSession['admission_lead_minutes'] ?? 0)===10 ? 'เปิดรับอัตโนมัติก่อนเรียน 10 นาที กดตรวจสอบอีกครั้งเมื่อถึงเวลา' : 'เมื่อถึงเวลาเรียนหรืออาจารย์แจ้งให้ลงชื่อ กดตรวจสอบอีกครั้ง') : 'หากผู้สอนเปิดรับเพิ่มเติม ให้กดตรวจสอบอีกครั้ง เวลาที่ลงชื่อจะบันทึกตามจริง' ?></p><a class="button button--secondary" href="?page=student-checkin&amp;token=<?= e($token) ?>">ตรวจสอบอีกครั้ง</a></div>
+                    <div class="student-success student-success--muted"><span data-icon="clock"></span><h2 id="attendance-title"><?= $waitingToOpen ? 'ยังไม่เปิดรับการลงชื่อ' : ($autoEnded?'สิ้นสุดเวลารับอัตโนมัติ':'ปิดรับการลงชื่อแล้ว') ?></h2><p><?= $waitingToOpen ? ((int)($classSession['admission_lead_minutes'] ?? 0)===10 ? 'เปิดรับอัตโนมัติก่อนเรียน 10 นาที กดตรวจสอบอีกครั้งเมื่อถึงเวลา' : 'เมื่อถึงเวลาเรียนหรืออาจารย์แจ้งให้ลงชื่อ กดตรวจสอบอีกครั้ง') : ($autoEnded?'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้':'ผู้สอนอาจเปิดรับอีกครั้งได้ก่อนเวลาเลิกคลาส') ?></p><a class="button button--secondary" href="?page=student-checkin&amp;token=<?= e($token) ?>">ตรวจสอบอีกครั้ง</a></div>
                 <?php endif; ?>
             </section>
         <?php endif; ?>
@@ -784,7 +784,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                         <article class="metric metric--active"><span>เปิดรับลงชื่อ</span><strong><?= e($data['active_total']) ?></strong><small>คลาส</small></article>
                         <article class="metric"><span>ห้องที่มีคลาสตามตารางขณะนี้</span><strong><?= e($data['rooms_in_use']) ?></strong><small>จาก <?= e($data['room_total']) ?> ห้อง · ดูการลงชื่อในรายงาน</small></article>
                         <?php if ($data['issues_total']): ?>
-                            <a class="metric metric--warning metric--link" href="?page=classes&amp;status=overdue" aria-label="สิ้นสุดเวลารับอัตโนมัติ <?= e($data['issues_total']) ?> คลาส"><span>สิ้นสุดเวลารับอัตโนมัติ</span><strong><?= e($data['issues_total']) ?></strong><small>ดูรายชื่อ หรือเปิดรับเพิ่มเติม <span aria-hidden="true">→</span></small></a>
+                            <a class="metric metric--warning metric--link" href="?page=classes&amp;status=overdue" aria-label="สิ้นสุดเวลารับอัตโนมัติ <?= e($data['issues_total']) ?> คลาส"><span>สิ้นสุดเวลารับอัตโนมัติ</span><strong><?= e($data['issues_total']) ?></strong><small>ดูรายละเอียดคลาส <span aria-hidden="true">→</span></small></a>
                         <?php else: ?>
                             <article class="metric"><span>สิ้นสุดเวลารับอัตโนมัติ</span><strong>0</strong><small>ไม่มีรายการ</small></article>
                         <?php endif; ?>

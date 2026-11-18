@@ -25,6 +25,12 @@
 .admission-actions select { min-width: 280px; }
 .day-event-actions { display: grid; gap: 8px; }
 .print-room-context { display: none; }
+@media (max-width: 640px) {
+  .class-panel-columns { grid-template-columns: minmax(0, 1fr); gap: 24px; }
+  .class-panel-attendance .section-heading { flex-wrap: wrap; gap: 12px; }
+  .class-info-dialog .admission-actions form { flex-wrap: wrap; }
+  .admission-actions select { min-width: 0; max-width: 100%; }
+}
 @media print {
   .calendar-tooltip, .skip-link, .nav-scrim { display: none !important; }
   body.printing-class-qr > :not(#class-info-dialog) { display: none !important; }

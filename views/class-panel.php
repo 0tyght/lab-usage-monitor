@@ -15,21 +15,21 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
         <p><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
         <p><?= e($panelClass['lecturer_name']) ?><?= $panelClass['section']?' · กลุ่ม '.e($panelClass['section']):'' ?></p>
         <span class="status status--<?= e($panelStatus) ?>"><span></span><?= e(status_label($panelStatus)) ?></span>
-        <p class="helper-text">เวลาเรียนและเวลารับลงชื่อเป็นคนละส่วน · เปิดรับเพิ่มไม่เปลี่ยนการจองห้องหรือเวลาในรายงาน</p>
+        <p class="helper-text">ผู้สอนปิดรับก่อนเวลาได้ ระบบหยุดรับเมื่อถึงเวลาเลิกคลาส</p>
     </div>
     <section class="class-admission-controls" aria-label="ควบคุมการรับลงชื่อ">
-        <?php if ((int)$panelClass['admission_lead_minutes']===10 && $panelMode==='scheduled' && $panelClass['status']==='open'): ?><p class="inline-note">QR พร้อมใช้งาน · เปิดรับอัตโนมัติ <?= e(thai_datetime(gmdate('Y-m-d\TH:i:s\Z',strtotime($panelClass['starts_at'])-600))) ?> และสิ้นสุด <?= e(thai_datetime($panelClass['ends_at'])) ?> เจ้าของคลาสกดปิดก่อนกำหนดได้</p><?php endif; ?>
-        <p class="inline-note"><?= $panelClass['status']==='cancelled'?'คลาสนี้ยกเลิกแล้ว ไม่รับลงชื่อและไม่จองห้องในตาราง':($panelClass['status']==='closed'?'เจ้าของคลาสปิดรับแล้ว ระบบจะไม่เปิดรับเองจนกว่าจะสั่งเปิดใหม่':($panelMode==='manual'?'วิธีรับลงชื่อ: ผู้สอนกดเปิดและปิดเอง ไม่หยุดรับตามเวลาสิ้นสุดเวลาเรียน':'วิธีรับลงชื่อ: ตามเวลาเรียน จะหยุดรับอัตโนมัติเมื่อถึง '.e(thai_datetime($panelClass['ends_at'])))) ?><?= $panelStatus==='overdue'?' · ยังไม่ได้กดปิดเอง แต่ระบบหยุดรับตามเวลาที่ตั้งไว้':'' ?></p>
-        <?php if ($panelClass['status']!=='cancelled'): ?>
+        <?php if (!$panelPast && (int)$panelClass['admission_lead_minutes']===10 && $panelMode==='scheduled' && $panelClass['status']==='open'): ?><p class="inline-note">QR พร้อมใช้งาน · เปิดรับอัตโนมัติ <?= e(thai_datetime(gmdate('Y-m-d\TH:i:s\Z',strtotime($panelClass['starts_at'])-600))) ?> และสิ้นสุด <?= e(thai_datetime($panelClass['ends_at'])) ?> เจ้าของคลาสกดปิดก่อนกำหนดได้</p><?php endif; ?>
+        <p class="inline-note"><?= $panelClass['status']==='cancelled'?'คลาสนี้ยกเลิกแล้ว ไม่รับลงชื่อและไม่จองห้องในตาราง':($panelPast?'คลาสสิ้นสุดแล้ว ไม่สามารถเปิดรับหรือลงชื่อย้อนหลังได้':($panelClass['status']==='closed'?'เจ้าของคลาสปิดรับแล้ว เปิดรับใหม่ได้ก่อนเวลาเลิกคลาส':($panelMode==='manual'?'เปิดรับทันทีและหยุดรับเมื่อถึงเวลาเลิกคลาส':'รับตามกำหนด และหยุดรับเมื่อถึง '.e(thai_datetime($panelClass['ends_at']))))) ?></p>
+        <?php if ($panelClass['status']!=='cancelled' && !$panelPast): ?>
         <div class="admission-actions">
-            <form method="post" action="<?= e($panelAction) ?>" data-confirm="ยืนยันวิธีรับลงชื่อที่เลือก? หากเลือกเปิดจนกดปิดเอง นักศึกษาที่มีลิงก์จะลงชื่อได้ทันทีแม้พ้นเวลาเรียน กรุณาปิดรับเมื่อเสร็จ" data-confirm-title="ยืนยันการเปิดรับลงชื่อ" data-confirm-label="ยืนยันเปิดรับ">
+            <form method="post" action="<?= e($panelAction) ?>" data-confirm="ยืนยันวิธีรับลงชื่อที่เลือก? ระบบจะหยุดรับเมื่อถึงเวลาเลิกคลาส" data-confirm-title="ยืนยันการเปิดรับลงชื่อ" data-confirm-label="ยืนยันเปิดรับ">
                 <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="open_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>">
-                <label class="field"><span>วิธีเปิดรับลงชื่อ</span><select name="checkin_mode" aria-describedby="admission-mode-help"><option value="scheduled" <?= !$panelPast && $panelMode==='scheduled'?'selected':'' ?> <?= $panelPast?'disabled':'' ?>>รับตามเวลาที่กำหนด (ปิดอัตโนมัติ)</option><option value="manual" <?= $panelPast || $panelMode==='manual'?'selected':'' ?>>เปิดรับตอนนี้จนกดปิดเอง</option></select></label>
+                <label class="field"><span>วิธีเปิดรับลงชื่อ</span><select name="checkin_mode" aria-describedby="admission-mode-help"><option value="scheduled" <?= $panelMode==='scheduled'?'selected':'' ?>>รับตามเวลาที่กำหนด</option><option value="manual" <?= $panelMode==='manual'?'selected':'' ?>>เปิดรับทันทีจนถึงเวลาเลิกคลาส</option></select></label>
                 <button class="button button--primary" type="submit"><?= $panelStatus==='open'?'ใช้วิธีที่เลือก':'เปิดรับการลงชื่อ' ?></button>
             </form>
             <?php if ($panelClass['status']==='open'): ?><form method="post" action="<?= e($panelAction) ?>" data-confirm="เมื่อปิดรับแล้ว นักศึกษาจะลงชื่อเพิ่มไม่ได้ ยืนยันหรือไม่?" data-confirm-title="ปิดรับการลงชื่อ" data-confirm-label="ปิดรับลงชื่อ"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="close_class"><input type="hidden" name="class_id" value="<?= $panelClass['id'] ?>"><button class="button button--secondary" type="submit">ปิดรับการลงชื่อ</button></form><?php endif; ?>
         </div>
-        <p class="helper-text" id="admission-mode-help">เลือก “เปิดรับตอนนี้จนกดปิดเอง” เพื่อรับนอกเวลาเรียน การเลือกอย่างเดียวยังไม่เปลี่ยนสถานะ ต้องกดปุ่มยืนยันก่อน</p>
+        <p class="helper-text" id="admission-mode-help">เลือกวิธีแล้วกดปุ่มยืนยัน ผู้สอนปิดรับก่อนเวลาได้</p>
         <?php endif; ?>
     </section>
     <p><a class="button button--secondary" href="?page=classes&edit_class=<?= $panelClass['id'] ?>">แก้ไข / ยกเลิกคลาสเรียน</a></p>
@@ -43,7 +43,7 @@ $panelPast = time() >= strtotime($panelClass['ends_at']);
                 <p data-poster-time><?= e(thai_datetime($panelClass['starts_at']).' – '.thai_datetime($panelClass['ends_at'])) ?></p>
                 <div class="class-qr-code" data-class-qr="<?= e($panelStudentUrl) ?>" role="img" aria-label="QR สำหรับ <?= e($panelClass['course_code']) ?>"><span>กำลังสร้าง QR…</span></div>
                 <p class="qr-print-instruction">สแกน QR แล้วกรอกรหัสนิสิตและชื่อของตนเอง</p>
-                <p class="qr-state-note" data-poster-state><?= e(status_label($panelStatus)) ?> · <?= $panelMode==='manual'?'ผู้สอนควบคุมการเปิด–ปิดรับ':((int)$panelClass['admission_lead_minutes']===10?'รับก่อนเรียน 10 นาที ถึงเวลาเลิกเรียน':'รับเฉพาะช่วงเวลาเรียน') ?></p>
+                <p class="qr-state-note" data-poster-state><?= e(status_label($panelStatus)) ?> · <?= $panelMode==='manual'?'รับทันทีจนถึงเวลาเลิกคลาส':((int)$panelClass['admission_lead_minutes']===10?'รับก่อนเรียน 10 นาที ถึงเวลาเลิกเรียน':'รับเฉพาะช่วงเวลาเรียน') ?></p>
             </div>
             <div class="class-qr-actions"><button class="button button--secondary" type="button" data-download-qr disabled>ดาวน์โหลด QR (PNG)</button><button class="button button--primary" type="button" data-print-qr disabled>พิมพ์ QR / PDF</button></div>
             <p class="class-panel-feedback" data-class-feedback role="status"></p>

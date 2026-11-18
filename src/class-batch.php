@@ -228,15 +228,15 @@ function operational_class_list(array $input): array
     }
     $search=trim((string)($input['q'] ?? ''));
     $status=(string)($input['status'] ?? '');
-    if (in_array($status,['draft','closed','cancelled'],true)) { $where[]='cs.status=:status'; $params[':status']=$status; }
+    if (in_array($status,['draft','closed','cancelled'],true)) { $where[]='cs.status=:status'; $params[':status']=$status; if ($status==='draft') { $where[]='cs.ends_at>:now'; $params[':now']=utc_now(); } }
     elseif (in_array($status,['open','scheduled','overdue'],true)) {
-        $where[]="cs.status='open'";
+        $where[]=$status==='overdue'?"cs.status IN ('open','draft')":"cs.status='open'";
         $params[':now']=utc_now();
-        if ($status==='overdue') $where[]="cs.checkin_mode='scheduled' AND cs.ends_at<=:now";
+        if ($status==='overdue') $where[]="cs.ends_at<=:now";
         else {
             $params[':early_now']=gmdate('Y-m-d\TH:i:s\Z',time()+600);
             $boundary='CASE WHEN cs.admission_lead_minutes=10 THEN :early_now ELSE :now END';
-            $where[]=$status==='open'?"(cs.checkin_mode='manual' OR (cs.starts_at<=$boundary AND cs.ends_at>:now))":"cs.checkin_mode='scheduled' AND cs.starts_at>$boundary";
+            $where[]=$status==='open'?"(cs.ends_at>:now AND (cs.checkin_mode='manual' OR cs.starts_at<=$boundary))":"cs.checkin_mode='scheduled' AND cs.starts_at>$boundary AND cs.ends_at>:now";
         }
     }
     if ($search!=='') { $where[]='(cs.course_code LIKE :q OR cs.course_name LIKE :q OR r.code LIKE :q)'; $params[':q']='%'.$search.'%'; }

@@ -709,10 +709,11 @@ function create_session_from_schedule(int $scheduleId, string $date): array
 /** Attendance policy is independent of room reservation time. */
 function class_checkin_status(array $session, ?int $now = null): string
 {
-    if (($session['status'] ?? '') !== 'open') return (string)($session['status'] ?? '');
-    if (($session['checkin_mode'] ?? 'scheduled') === 'manual') return 'open';
     $now ??= time();
-    if ($now >= strtotime($session['ends_at'])) return 'overdue';
+    $status=(string)($session['status'] ?? '');
+    if (in_array($status,['open','draft'],true) && $now >= strtotime($session['ends_at'])) return 'overdue';
+    if ($status !== 'open') return $status;
+    if (($session['checkin_mode'] ?? 'scheduled') === 'manual') return 'open';
     if ($now < strtotime($session['starts_at']) - 60 * (int)($session['admission_lead_minutes'] ?? 0)) return 'scheduled';
     return 'open';
 }
@@ -724,11 +725,13 @@ function open_class_session(int $id, string $mode = 'scheduled'): array
     if (!$session || !$user || !in_array($user['role'],['admin','lecturer'],true)) return ['ok'=>false, 'message'=>'ไม่พบคลาสหรือไม่มีสิทธิ์'];
     if (!in_array($mode,['scheduled','manual'],true)) return ['ok'=>false,'message'=>'กรุณาเลือกวิธีเปิดรับลงชื่อ'];
     if ($session['status'] === 'cancelled') return ['ok'=>false, 'message'=>'คลาสถูกยกเลิก ไม่สามารถเปิดรับลงชื่อได้'];
-    if ($mode === 'scheduled' && time() >= strtotime($session['ends_at'])) return ['ok'=>false,'message'=>'เวลาเรียนผ่านไปแล้ว หากต้องการรับเพิ่ม ให้เลือก “เปิดรับตอนนี้จนกดปิดเอง” โดยเวลาเรียนเดิมจะไม่เปลี่ยน'];
-    $statement = db()->prepare("UPDATE class_sessions SET status='open', checkin_mode=:mode, updated_at=:updated_at WHERE id=:id AND status IN ('draft','open','closed')");
-    $statement->execute([':mode'=>$mode, ':updated_at'=>utc_now(), ':id'=>$id]);
+    $now=utc_now();
+    if ($now >= $session['ends_at']) return ['ok'=>false,'message'=>'คลาสสิ้นสุดแล้ว ไม่สามารถเปิดรับลงชื่อย้อนหลังได้'];
+    $statement = db()->prepare("UPDATE class_sessions SET status='open', checkin_mode=:mode, updated_at=:updated_at WHERE id=:id AND status IN ('draft','open','closed') AND ends_at>:now");
+    $statement->execute([':mode'=>$mode, ':updated_at'=>$now, ':id'=>$id, ':now'=>$now]);
+    if ($statement->rowCount()!==1) return ['ok'=>false,'message'=>'คลาสสิ้นสุดแล้วหรือสถานะเปลี่ยนไป ไม่สามารถเปิดรับลงชื่อได้'];
     audit_log('class_opened', 'class_session', $id, ['checkin_mode'=>$mode,'previous_status'=>$session['status']], (int)$user['id']);
-    return ['ok'=>true, 'message'=>$mode==='manual'?'เปิดรับทันทีจนกว่าผู้สอนจะกดปิดเอง เวลาเรียนและการจองห้องเดิมไม่เปลี่ยน':(time()<strtotime($session['starts_at'])-60*(int)$session['admission_lead_minutes']?'ตั้งให้รับลงชื่อตามเวลาที่กำหนดแล้ว ขณะนี้ยังรอเวลาเปิดรับ':'เปิดรับลงชื่อแล้ว และจะหยุดรับอัตโนมัติเมื่อสิ้นสุดเวลาเรียน')];
+    return ['ok'=>true, 'message'=>$mode==='manual'?'เปิดรับทันที ผู้สอนปิดก่อนเวลาได้ และระบบจะหยุดรับเมื่อสิ้นสุดเวลาเรียน':(time()<strtotime($session['starts_at'])-60*(int)$session['admission_lead_minutes']?'ตั้งให้รับลงชื่อตามเวลาที่กำหนดแล้ว ขณะนี้ยังรอเวลาเปิดรับ':'เปิดรับลงชื่อแล้ว และจะหยุดรับอัตโนมัติเมื่อสิ้นสุดเวลาเรียน')];
 }
 
 function class_session_select_sql(): string
@@ -770,17 +773,18 @@ function list_class_sessions(array $filters = [], int $limit = 100): array
     if (in_array($status, ['draft', 'closed', 'cancelled'], true)) {
         $where[] = 'cs.status = :status';
         $params[':status'] = $status;
+        if ($status==='draft') { $where[]='cs.ends_at > :status_now'; $params[':status_now']=utc_now(); }
     } elseif (in_array($status, ['open', 'scheduled', 'overdue'], true)) {
-        $where[] = "cs.status = 'open'";
+        $where[] = $status==='overdue' ? "cs.status IN ('open','draft')" : "cs.status = 'open'";
         $params[':status_now'] = utc_now();
         if ($status === 'open') {
             $params[':early_now'] = gmdate('Y-m-d\TH:i:s\Z',time()+600);
-            $where[] = "(cs.checkin_mode='manual' OR ((cs.starts_at <= :status_now OR (cs.admission_lead_minutes=10 AND cs.starts_at<=:early_now)) AND cs.ends_at > :status_now))";
+            $where[] = "cs.ends_at > :status_now AND (cs.checkin_mode='manual' OR cs.starts_at <= :status_now OR (cs.admission_lead_minutes=10 AND cs.starts_at<=:early_now))";
         } elseif ($status === 'scheduled') {
             $params[':early_now'] = gmdate('Y-m-d\TH:i:s\Z',time()+600);
             $where[] = "cs.checkin_mode='scheduled' AND cs.starts_at > CASE WHEN cs.admission_lead_minutes=10 THEN :early_now ELSE :status_now END";
         } else {
-            $where[] = "cs.checkin_mode='scheduled' AND cs.ends_at <= :status_now";
+            $where[] = "cs.ends_at <= :status_now";
         }
     }
     $search = trim((string) ($filters['q'] ?? ''));
@@ -1079,24 +1083,23 @@ function register_student_attendance(string $token, array $input): array
         $lock->execute([$session['id']]);
         $session=get_public_class_by_token($token);
         if (!$session) return ['ok'=>false,'message'=>'ไม่พบคลาสเรียน','errors'=>['form'=>'ไม่พบคลาสเรียน']];
+        $state=class_checkin_status($session);
+        if ($state!=='open') {
+            $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
+            return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
+        }
         $existing=$connection->prepare('SELECT id FROM attendance_records WHERE class_session_id=? AND student_code=?');
         $existing->execute([$session['id'],$studentCode]);
         if (($existingId=$existing->fetchColumn())!==false) return ['ok'=>true,'id'=>(int)$existingId,'duplicate'=>true,'message'=>'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
-        $state=class_checkin_status($session);
-        if ($state!=='open') {
-            $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'สิ้นสุดเวลารับอัตโนมัติแล้ว กรุณาติดต่อผู้สอนเพื่อเปิดรับเพิ่ม',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
-            return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
-        }
         $now=utc_now();
+        if ($now >= $session['ends_at']) return ['ok'=>false,'message'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้','errors'=>['form'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้']];
         $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, checkout_deadline_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :deadline, :request_id, :created_at)');
         $insert->execute([
             ':class_id' => $session['id'],
             ':student_code' => $studentCode,
             ':student_name' => $studentName,
             ':check_in_at' => $now,
-            // Late manual admissions must never receive an end time before check-in.
-            // Their checkout remains unspecified for administrative review.
-            ':deadline' => strtotime((string)$session['ends_at']) > strtotime($now) ? $session['ends_at'] : null,
+            ':deadline' => $session['ends_at'],
             ':request_id' => $requestId,
             ':created_at' => $now,
         ]);
@@ -1158,7 +1161,7 @@ function dashboard_data(): array
     $today = $connection->prepare('SELECT COUNT(*) FROM class_sessions WHERE starts_at >= :start AND starts_at < :end' . $scopeSql);
     $today->execute($params);
     $now = utc_now();
-    $active = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND (checkin_mode='manual' OR (starts_at <= CASE WHEN admission_lead_minutes=10 THEN :early_now ELSE :now END AND ends_at > :now))" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
+    $active = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND ends_at > :now AND (checkin_mode='manual' OR starts_at <= CASE WHEN admission_lead_minutes=10 THEN :early_now ELSE :now END)" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
     $activeParams = [':now'=>$now];
     if ($scopeSql) $activeParams[':viewer_id'] = $viewer['id'];
     $active->execute($activeParams + [':early_now'=>gmdate('Y-m-d\TH:i:s\Z',time()+600)]);
@@ -1168,7 +1171,7 @@ function dashboard_data(): array
     $roomsStatement->execute($activeParams);
     $roomsInUse = (int) $roomsStatement->fetchColumn();
     $roomTotal = (int) $connection->query("SELECT COUNT(*) FROM rooms WHERE status <> 'inactive'")->fetchColumn();
-    $issues = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status = 'open' AND checkin_mode='scheduled' AND ends_at <= :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
+    $issues = $connection->prepare("SELECT COUNT(*) FROM class_sessions WHERE status IN ('open','draft') AND ends_at <= :now" . ($scopeSql ? ' AND lecturer_user_id = :viewer_id' : ''));
     $issueParams = [':now' => $now];
     if ($scopeSql) $issueParams[':viewer_id'] = $viewer['id'];
     $issues->execute($issueParams);
@@ -1437,9 +1440,9 @@ function report_data(string $period = 'month', int $roomId = 0): array
     $statement = db()->prepare(
         "SELECT COUNT(DISTINCT cs.id) AS total,
                 COUNT(ar.id) AS attendees,
-                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND (cs.checkin_mode='manual' OR (cs.starts_at <= :now AND cs.ends_at > :now)) THEN cs.id END) AS active,
+                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND cs.ends_at > :now AND (cs.checkin_mode='manual' OR cs.starts_at <= :now) THEN cs.id END) AS active,
                 COUNT(DISTINCT CASE WHEN cs.status = 'closed' THEN cs.id END) AS completed,
-                COUNT(DISTINCT CASE WHEN cs.status = 'open' AND cs.checkin_mode='scheduled' AND cs.ends_at <= :now THEN cs.id END) AS overdue
+                COUNT(DISTINCT CASE WHEN cs.status IN ('open','draft') AND cs.ends_at <= :now THEN cs.id END) AS overdue
          FROM class_sessions cs LEFT JOIN attendance_records ar ON ar.class_session_id = cs.id
          WHERE {$whereSql}"
     );
