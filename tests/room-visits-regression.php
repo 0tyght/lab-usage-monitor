@@ -24,11 +24,11 @@ $expect(room_visit_receipt($receipt)['person_name']===$input['person_name'],'Own
 $secondReceipt=bin2hex(random_bytes(32));$secondInput=array_replace($input,['person_code'=>'QR002','client_request_id'=>bin2hex(random_bytes(16))]);
 $second=record_room_visit($token,$secondInput,$secondReceipt);$expect($second['ok'],'Multiple individual users may use an unscheduled room');
 $thirdInput=array_replace($input,['person_code'=>'QR003','client_request_id'=>bin2hex(random_bytes(16))]);$thirdReceipt=bin2hex(random_bytes(32));
-$expect(!record_room_visit($token,$thirdInput,$thirdReceipt)['ok'],'Capacity enforced for active visits');
-$expect(record_room_visit($token,$input,$receipt)['ok'],'Own retry still succeeds when capacity full');
+$expect(record_room_visit($token,$thirdInput,$thirdReceipt)['ok'],'Legacy capacity does not prevent multiple active visits');
+$expect(record_room_visit($token,$input,$receipt)['ok'],'Own retry remains idempotent with multiple visitors');
 db()->prepare('UPDATE room_visits SET check_in_at=? WHERE id=?')->execute([gmdate('Y-m-d\TH:i:s\Z',time()-3600),$first['id']]);
 $expect(checkout_room_visit($receipt)['ok'] && checkout_room_visit($receipt)['duplicate'],'Self checkout and retry are safe');
-$expect(record_room_visit($token,$thirdInput,$thirdReceipt)['ok'],'Checkout frees one place');
+$expect(record_room_visit($token,$thirdInput,$thirdReceipt)['duplicate'],'Other active visitors remain unchanged after checkout');
 $expect(!checkout_room_visit('',$second['id'],'ตรวจห้องแล้ว')['ok'],'Anonymous cannot force-close a record');
 $_SESSION['user_id']=$lecturer;$_SESSION['last_activity']=time();$expect(!checkout_room_visit('',$second['id'],'ตรวจแล้ว')['ok'] && (bool)room_visit_report([])['errors'],'Lecturer cannot read or close unrelated public visits');
 $_SESSION['user_id']=$admin;$expect(!checkout_room_visit('',$second['id'],'')['ok'],'Admin closure requires a reason');

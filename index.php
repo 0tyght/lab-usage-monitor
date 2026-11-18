@@ -272,7 +272,7 @@ if (($_GET['download'] ?? '') === 'attendance-csv') {
         echo implode(' ', $filters['errors']);
         exit;
     }
-    $result = list_attendance_records($filters);
+    $result = list_attendance_records($filters, true);
     $table = attendance_report_table($result['items']);
     $roomLabel = 'ทุกห้อง';
     foreach (list_rooms() as $room) if ($room['id'] === $filters['room_id']) $roomLabel = $room['code'].' — '.$room['name'];

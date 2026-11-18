@@ -956,7 +956,7 @@ function class_attendance(int $classSessionId): array
     return $rows;
 }
 
-function list_attendance_records(array $filters = []): array
+function list_attendance_records(array $filters = [], bool $all = false, int $page = 1): array
 {
     close_expired_room_usage(db());
     $viewer = current_user();
@@ -986,14 +986,21 @@ function list_attendance_records(array $filters = []): array
         }
     }
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at, ar.check_out_at, ar.checkout_method,
-                   cs.id AS class_id, cs.course_code, cs.course_name, cs.section,
-                   r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name
-            FROM attendance_records ar
+    $from = "FROM attendance_records ar
             JOIN class_sessions cs ON cs.id = ar.class_session_id
             JOIN rooms r ON r.id = cs.room_id
             JOIN users u ON u.id = cs.lecturer_user_id
-            {$whereSql} ORDER BY ar.check_in_at DESC, ar.id DESC LIMIT 200";
+            {$whereSql}";
+    $count = db()->prepare("SELECT COUNT(*) {$from}");
+    $count->execute($params);
+    $total = (int)$count->fetchColumn();
+    $pages = max(1, (int)ceil($total / 200));
+    $page = min($pages, max(1, $page));
+    $limit = $all ? '' : ' LIMIT 200 OFFSET '.(($page-1)*200);
+    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at, ar.check_out_at, ar.checkout_method,
+                   cs.id AS class_id, cs.course_code, cs.course_name, cs.section,
+                   r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name
+            {$from} ORDER BY ar.check_in_at DESC, ar.id DESC{$limit}";
     $statement = db()->prepare($sql);
     $statement->execute($params);
     $items = $statement->fetchAll();
@@ -1002,7 +1009,7 @@ function list_attendance_records(array $filters = []): array
         $item['class_id'] = (int) $item['class_id'];
     }
 
-    return ['ok' => true, 'items' => $items, 'total' => count($items)];
+    return ['ok' => true, 'items' => $items, 'total' => $total, 'page'=>$page, 'pages'=>$pages];
 }
 
 function attendance_report_filters(array $input): array
@@ -1087,7 +1094,9 @@ function register_student_attendance(string $token, array $input): array
             ':student_code' => $studentCode,
             ':student_name' => $studentName,
             ':check_in_at' => $now,
-            ':deadline' => $session['ends_at'],
+            // Late manual admissions must never receive an end time before check-in.
+            // Their checkout remains unspecified for administrative review.
+            ':deadline' => strtotime((string)$session['ends_at']) > strtotime($now) ? $session['ends_at'] : null,
             ':request_id' => $requestId,
             ':created_at' => $now,
         ]);

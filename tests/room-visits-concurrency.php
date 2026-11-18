@@ -33,15 +33,15 @@ for ($i=1;$i<=8;$i++) {
     if (!is_resource($process)) throw new RuntimeException('Cannot launch test worker');
     fclose($pipes[0]); $workers[]=[$process,$pipes];
 }
-touch($fixture.'/go'); $accepted=0; $full=0;
+touch($fixture.'/go'); $accepted=0; $failed=0;
 foreach ($workers as [$process,$pipes]) {
     $output=stream_get_contents($pipes[1]); $error=stream_get_contents($pipes[2]);
     fclose($pipes[1]); fclose($pipes[2]); $exit=proc_close($process);
     $result=json_decode($output,true);
     if ($exit!==0 || !is_array($result)) throw new RuntimeException('Worker failed: '.$error);
     if ($result['ok']) $accepted++;
-    elseif (str_contains(implode(' ',$result['errors'] ?? []),'ครบความจุห้อง')) $full++;
+    else $failed++;
 }
 $count=(int)db()->query('SELECT COUNT(*) FROM room_visits WHERE room_id='.$room)->fetchColumn();
-if ($accepted!==2 || $full!==6 || $count!==2) throw new RuntimeException("Capacity race failed: accepted=$accepted full=$full saved=$count");
-echo "PASS: 8 simultaneous outside-class visitors, exactly 2 accepted and 6 capacity rejections; no overbooking or lost success\n";
+if ($accepted!==8 || $failed!==0 || $count!==8) throw new RuntimeException("Concurrent visits failed: accepted=$accepted failed=$failed saved=$count");
+echo "PASS: 8 simultaneous outside-class visitors recorded despite legacy capacity of 2\n";

@@ -103,9 +103,6 @@ function record_room_visit(string $token, array $input, string $receipt): array
         if (room_current_classes((int)$room['id']) || room_has_legacy_plan((int)$room['id'])) return visit_error('ขณะนี้มีคลาสหรือมีตารางเรียนแล้ว กรุณาตรวจสอบคลาสก่อนลงชื่อ ระบบยังไม่บันทึกเป็นการใช้นอกคลาส');
         $next=room_next_class_start((int)$room['id'],time());
         if ($next && strtotime($planned)>strtotime($next)) return visit_error('เวลาสิ้นสุดต้องไม่เกินเวลาเริ่มคลาสถัดไปของห้อง');
-        $active=$connection->prepare('SELECT COUNT(*) FROM room_visits WHERE room_id=? AND check_out_at IS NULL');
-        $active->execute([$room['id']]);
-        if ((int)$active->fetchColumn()>=(int)$room['capacity']) return visit_error('จำนวนผู้ที่ยังไม่กดออกครบความจุห้องแล้ว กรุณาติดต่อผู้ดูแลห้อง');
         $same=$connection->prepare('SELECT id FROM room_visits WHERE person_code=? AND check_out_at IS NULL'); $same->execute([$code]);
         if ($same->fetchColumn()) return visit_error('รหัสนี้มีรายการที่ยังไม่กดออก กรุณาใช้เบราว์เซอร์ที่ลงชื่อไว้ หรือให้ผู้ดูแลตรวจสอบ');
         $now=utc_now();

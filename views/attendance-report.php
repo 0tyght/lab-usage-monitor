@@ -1,11 +1,11 @@
 <?php
 $attendanceFilters = attendance_report_filters($_GET);
 $attendanceQuery = attendance_report_query($attendanceFilters);
-$attendanceResult = $attendanceFilters['errors'] ? ['items'=>[], 'total'=>0] : list_attendance_records($attendanceFilters);
+$attendancePrinting = isset($_GET['print']);
+$attendanceResult = $attendanceFilters['errors'] ? ['items'=>[], 'total'=>0, 'page'=>1, 'pages'=>1] : list_attendance_records($attendanceFilters, $attendancePrinting, (int)($_GET['page_number'] ?? 1));
 $attendanceRooms = list_rooms();
 $attendanceRoomLabel = 'ทุกห้อง';
 foreach ($attendanceRooms as $room) if ($room['id'] === $attendanceFilters['room_id']) $attendanceRoomLabel = $room['code'].' — '.$room['name'];
-$attendancePrinting = isset($_GET['print']);
 ?>
 <section class="usage-report <?= $attendancePrinting?'is-print-view':'' ?>">
 <header class="section-heading report-section-heading"><div><h2>การลงชื่อเข้าเรียน</h2><p>ค้นหานักศึกษา รายวิชา ห้อง และเวลาที่ลงชื่อผ่าน QR Code</p></div><?php if (!$attendanceFilters['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" target="_blank" rel="noopener" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'attendance','print'=>1]+$attendanceQuery)) ?>">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'attendance-csv']+$attendanceQuery)) ?>"><span data-icon="download"></span>ส่งออก CSV</a></div><?php endif; ?></header>
@@ -22,7 +22,8 @@ $attendancePrinting = isset($_GET['print']);
 <div class="report-applied-filters"><h2><?= e(thai_date_label($attendanceFilters['date_from']).' – '.thai_date_label($attendanceFilters['date_to'])) ?></h2><p><?= e($attendanceRoomLabel) ?> · เวลาไทย (UTC+7)<?= $attendanceFilters['q']!==''?' · คำค้น: '.e($attendanceFilters['q']):'' ?></p></div>
 <div class="report-summary"><span><strong><?= e($attendanceResult['total']) ?></strong>รายการลงชื่อ</span></div>
 <?php if ($attendancePrinting): ?><div class="print-actions"><button class="button button--primary" type="button" data-print-report>พิมพ์ / บันทึกเป็น PDF</button><p>เลือก “บันทึกเป็น PDF” ในหน้าต่างพิมพ์ของเบราว์เซอร์</p></div><?php endif; ?>
-<div class="section-heading"><div><h2>รายละเอียดการลงชื่อ</h2><p>เรียงจากเวลาล่าสุด · แสดงได้สูงสุด 200 รายการต่อรายงาน</p></div><span class="result-count">พบ <?= e($attendanceResult['total']) ?> รายการ</span></div>
+<div class="section-heading"><div><h2>รายละเอียดการลงชื่อ</h2><p>เรียงจากเวลาล่าสุด · <?= $attendancePrinting ? 'ฉบับพิมพ์แสดงทุกรายการ' : 'แสดงสูงสุด 200 รายการต่อหน้า' ?></p></div><span class="result-count">พบ <?= e($attendanceResult['total']) ?> รายการ</span></div>
 <?php render_attendance_table($attendanceResult['items'], true, true); ?>
+<?php if (!$attendancePrinting && $attendanceResult['pages']>1): ?><nav class="report-pagination" aria-label="หน้ารายงานการลงชื่อ"><?php if ($attendanceResult['page']>1): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'attendance','page_number'=>$attendanceResult['page']-1]+$attendanceQuery)) ?>">หน้าก่อน</a><?php endif; ?><span>หน้า <?= $attendanceResult['page'] ?> / <?= $attendanceResult['pages'] ?></span><?php if ($attendanceResult['page']<$attendanceResult['pages']): ?><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'attendance','page_number'=>$attendanceResult['page']+1]+$attendanceQuery)) ?>">หน้าถัดไป</a><?php endif; ?><small>CSV และฉบับพิมพ์รวมทุกหน้าที่ตรงตัวกรอง</small></nav><?php endif; ?>
 <?php endif; ?>
 </section>

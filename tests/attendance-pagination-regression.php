@@ -1,0 +1,24 @@
+<?php
+declare(strict_types=1);
+putenv('APP_ENV=local');
+putenv('LUMS_DB_DSN=sqlite::memory:');
+putenv('LUMS_SESSION_PATH='.sys_get_temp_dir().'/lums-attendance-pages-'.bin2hex(random_bytes(6)));
+require dirname(__DIR__).'/src/bootstrap.php';
+initialize_database(db(),true);
+start_lums_session();
+$admin=(int)db()->query("SELECT id FROM users WHERE role='admin' LIMIT 1")->fetchColumn();
+$_SESSION['user_id']=$admin; $_SESSION['last_activity']=time();
+$room=(int)db()->query("SELECT id FROM rooms LIMIT 1")->fetchColumn();
+$now=utc_now();$end=gmdate('Y-m-d\TH:i:s\Z',time()+3600);
+db()->prepare("INSERT INTO class_sessions(room_id,lecturer_user_id,course_code,course_name,starts_at,ends_at,status,qr_token,created_at,updated_at) VALUES (?,?,'PAGE-TEST','คลาสทดสอบ',?,?,'open',?,?,?)")->execute([$room,$admin,$now,$end,bin2hex(random_bytes(16)),$now,$now]);
+$class=(int)db()->lastInsertId();
+$insert=db()->prepare('INSERT INTO attendance_records(class_session_id,student_code,student_name,check_in_at,created_at) VALUES (?,?,?,?,?)');
+for($i=1;$i<=205;$i++) $insert->execute([$class,'PAGE'.str_pad((string)$i,4,'0',STR_PAD_LEFT),'ผู้ใช้ทดสอบ',$now,$now]);
+$filters=['q'=>'PAGE','room_id'=>$room];
+$first=list_attendance_records($filters,false,1);
+$second=list_attendance_records($filters,false,2);
+$all=list_attendance_records($filters,true);
+if ($first['total']!==205 || count($first['items'])!==200 || $first['pages']!==2 || count($second['items'])!==5 || $second['page']!==2 || count($all['items'])!==205) throw new RuntimeException('Attendance pagination or complete export failed');
+$csv=attendance_report_table($all['items']);
+if(count($csv['rows'])!==205) throw new RuntimeException('CSV omitted matching rows');
+echo "PASS: 205 attendance records appear across pages and in complete export\n";
