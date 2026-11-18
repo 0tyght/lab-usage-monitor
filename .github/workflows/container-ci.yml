@@ -72,6 +72,9 @@ jobs:
         run: |
           docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/room-visits-regression.php
           docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/room-visits-concurrency.php
+          docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/checkout-regression.php
+          docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/timeout-worker-regression.php
+          docker run --rm --entrypoint php lums-ci:${{ github.sha }} tests/attendance-pagination-regression.php
 
       - name: Verify HTTP serving and private file isolation
         run: |

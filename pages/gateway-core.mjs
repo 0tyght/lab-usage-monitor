@@ -1,4 +1,5 @@
 export const RUNTIME_URL = 'https://raw.githubusercontent.com/0tyght/lab-usage-monitor/codex/online-runtime/runtime.json';
+export const RUNTIME_FALLBACK_URL = 'https://api.github.com/repos/0tyght/lab-usage-monitor/contents/runtime.json?ref=codex%2Fonline-runtime';
 
 export function validateRuntime(value) {
   if (!value || value.schemaVersion !== 1 || !['online', 'offline'].includes(value.status)) throw new Error('config');
@@ -26,12 +27,22 @@ export async function checkConnection({ search = '', fetcher = fetch, signal } =
   if (!response.ok) throw new Error('network');
   let runtime;
   try { runtime = validateRuntime(await response.json()); } catch { throw new Error('config'); }
-  if (runtime.status === 'offline') return runtime;
+  const healthy = async candidate => {
+    try {
+      const health = await fetcher(`${candidate.origin}/?health=1`, options);
+      if (!health.ok) return false;
+      const data = await health.json();
+      return data.status === 'ok' && data.service === 'lums' && data.gatewayId === candidate.gatewayId;
+    } catch { return false; }
+  };
+  if (runtime.status === 'online' && await healthy(runtime)) return { status: 'ready', destination: runtime.origin + '/' + query };
+  // GitHub's raw CDN can serve the previous tunnel briefly after a restart.
+  // Consult the branch directly only on failure, then validate it and its health.
   try {
-    const health = await fetcher(`${runtime.origin}/?health=1`, options);
-    if (!health.ok) throw new Error('offline');
-    const data = await health.json();
-    if (data.status !== 'ok' || data.service !== 'lums' || data.gatewayId !== runtime.gatewayId) throw new Error('offline');
-  } catch { return { status: 'offline' }; }
-  return { status: 'ready', destination: runtime.origin + '/' + query };
+    const fresh = await fetcher(RUNTIME_FALLBACK_URL, { ...options, headers: { Accept: 'application/vnd.github.raw+json' } });
+    if (!fresh.ok) return { status: 'offline' };
+    const current = validateRuntime(await fresh.json());
+    if (current.status === 'online' && await healthy(current)) return { status: 'ready', destination: current.origin + '/' + query };
+  } catch { /* Unavailable or rate-limited fallback is still offline. */ }
+  return { status: 'offline' };
 }

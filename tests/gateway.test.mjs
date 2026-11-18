@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { checkConnection, classQuery, validateRuntime, RUNTIME_URL } from '../pages/gateway-core.mjs';
+import { checkConnection, classQuery, validateRuntime, RUNTIME_URL, RUNTIME_FALLBACK_URL } from '../pages/gateway-core.mjs';
 import { readEnvironment, runtimeState, PAGES_URL } from '../scripts/online-lib.mjs';
 
 const token = 'a'.repeat(32);
@@ -58,10 +58,44 @@ test('an old QR follows the new tunnel without changing its token', async () => 
     assert.equal(result.destination, `https://${name}.trycloudflare.com/?page=student-checkin&token=${token}`);
   }
 });
-test('offline status never probes a destination', async () => {
-  let count = 0;
-  assert.equal((await checkConnection({ fetcher: async () => { count++; return response({ schemaVersion: 1, status: 'offline' }); } })).status, 'offline');
-  assert.equal(count, 1);
+test('stale raw CDN falls back to the current validated branch and preserves QR', async () => {
+  const fresh={...runtime,origin:'https://fresh-room.trycloudflare.com'};
+  const calls=[];
+  const result=await checkConnection({search:`?page=room-checkin&token=${token}`,fetcher:async (url,options)=>{
+    calls.push(url);
+    if (url.startsWith(RUNTIME_URL)) return response(runtime);
+    if (url===runtime.origin+'/?health=1') throw new Error('old tunnel unavailable');
+    if (url===RUNTIME_FALLBACK_URL) { assert.equal(options.headers.Accept,'application/vnd.github.raw+json'); return response(fresh); }
+    if (url===fresh.origin+'/?health=1') return response({status:'ok',service:'lums',gatewayId:token});
+    assert.fail('unexpected request');
+  }});
+  assert.equal(result.destination,`${fresh.origin}/?page=room-checkin&token=${token}`);
+  assert.equal(calls.length,4);
+});
+test('fallback cannot redirect to an untrusted or unhealthy server', async () => {
+  for(const bad of [{...runtime,origin:'https://evil.example'}, {...runtime,origin:'https://other.trycloudflare.com',gatewayId:'b'.repeat(32)}]) {
+    const result=await checkConnection({fetcher:async url=>{
+      if(url.startsWith(RUNTIME_URL)) return response(runtime);
+      if(url===RUNTIME_FALLBACK_URL) return response(bad);
+      if(url===bad.origin+'/?health=1') return response({status:'ok',service:'lums',gatewayId:token});
+      throw new Error('unreachable');
+    }});
+    assert.equal(result.status,'offline');
+  }
+});
+test('offline status checks branch but never probes a destination', async () => {
+  const urls=[];
+  assert.equal((await checkConnection({ fetcher: async url => { urls.push(url); return response({ schemaVersion: 1, status: 'offline' }); } })).status, 'offline');
+  assert.equal(urls.length, 2);
+  assert.equal(urls[1], RUNTIME_FALLBACK_URL);
+});
+test('stale offline raw cache can discover newly started server', async () => {
+  const result=await checkConnection({fetcher:async url=>{
+    if(url.startsWith(RUNTIME_URL)) return response({schemaVersion:1,status:'offline'});
+    if(url===RUNTIME_FALLBACK_URL) return response(runtime);
+    return response({status:'ok',service:'lums',gatewayId:token});
+  }});
+  assert.equal(result.destination,runtime.origin+'/');
 });
 test('runtime absent / network failure / malformed configuration', async () => {
   assert.equal((await checkConnection({ fetcher: async () => response({}, 404) })).status, 'unconfigured');
