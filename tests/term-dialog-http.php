@@ -198,6 +198,7 @@ $student=['action'=>'student_attendance','csrf_token'=>$csrf($studentForm),'toke
 [$status,,$receipt]=$request($publicPath,$student);
 [, $receiptHtml]=$request('/'.$receipt);
 $expect($status===302 && str_contains($receiptHtml,'บันทึกเรียบร้อยแล้ว'),'Manual sign-in returns an actual success receipt');
+$expect(str_contains($receiptHtml,'เมื่อออกจากห้อง ให้สแกน QR ประจำห้องอีกครั้ง') && str_contains($receiptHtml,'Time out'),'Class receipt explains checkout and timeout');
 $request($publicPath,$student);
 $expect((int)db()->query('SELECT COUNT(*) FROM attendance_records WHERE class_session_id='.$onceClassId)->fetchColumn()===1,'Repeated HTTP check-in creates exactly one attendance record');
 $cookies=$adminCookies;
