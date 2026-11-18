@@ -1,6 +1,6 @@
 <?php
 $rooms = list_rooms();
-$activeVisits = db()->query('SELECT room_id,COUNT(*) AS total FROM room_visits WHERE check_out_at IS NULL GROUP BY room_id')->fetchAll(PDO::FETCH_KEY_PAIR);
+$activeRoomUsers = active_room_user_counts();
 $posterRoom = null;
 foreach ($rooms as $room) {
     if ($room['id'] === (int)($_GET['qr_room'] ?? 0)) $posterRoom = $room;
@@ -89,7 +89,7 @@ $roomStatusOptions = [
                 <th>ห้องปฏิบัติการ</th>
                 <th>ตำแหน่ง</th>
                 <th>สถานะห้อง</th>
-                <th>นอกคลาสที่ยังไม่กดออก</th>
+                <th>ผู้ใช้งานปัจจุบัน</th>
                 <th>การดำเนินการ</th>
             </tr>
         </thead>
@@ -106,9 +106,9 @@ $roomStatusOptions = [
                         ? ($room['live_status'] === 'active' ? 'มีคลาสตามตาราง' : 'พร้อมรับการเข้าใช้')
                         : status_label($room['status'])) ?>
                 </td>
-                <td data-label="นอกคลาสที่ยังไม่กดออก">
-                    <?= (int)($activeVisits[$room['id']] ?? 0) ?> คน
-                    <small>ไม่จำกัดจำนวนผู้ลงชื่อ</small>
+                <td data-label="ผู้ใช้งานปัจจุบัน">
+                    <?= (int)($activeRoomUsers[$room['id']] ?? 0) ?> คน
+                    <small>ลงชื่อเข้าแล้ว ยังไม่ลงชื่อออก</small>
                 </td>
                 <td data-label="การดำเนินการ">
                     <div class="room-table-actions">
@@ -140,9 +140,9 @@ $roomStatusOptions = [
     </table>
 </div>
 
-<p class="helper-text">จำนวนที่ยังไม่กดออกเป็นสถานะจากการลงชื่อ ไม่ใช่จำนวนคนที่ตรวจวัดในห้อง และไม่มีการปิดรับเพราะจำนวนคนครบ</p>
+<p class="helper-text">นับผู้ที่ลงชื่อเข้าและยังไม่ลงชื่อออก ทั้งในคลาสและนอกคลาส ระบบไม่นับรายการที่หมดเวลาแล้ว ตัวเลขอาจต่างจากจำนวนคนจริงในห้อง</p>
 <?php if ($user['role'] === 'admin'): ?>
-    <p><a class="text-link" href="?page=reports&amp;tab=walkins&amp;visit_status=active">ตรวจรายการนอกคลาสที่ยังไม่กดออก</a></p>
+    <p><a class="text-link" href="?page=reports&amp;tab=attendance">ดูรายชื่อในคลาส</a> · <a class="text-link" href="?page=reports&amp;tab=walkins&amp;visit_status=active">ดูรายชื่อนอกคลาสที่ยังไม่ออก</a></p>
 <?php endif; ?>
 
 <?php if ($roomDialogOpen): ?>

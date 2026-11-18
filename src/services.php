@@ -33,6 +33,27 @@ function room_select_sql(): string
             FROM rooms r";
 }
 
+/** Count distinct checked-in people with a live checkout deadline, across both entry paths. */
+function active_room_user_counts(): array
+{
+    $connection = db();
+    close_expired_room_usage($connection);
+    $now = utc_now();
+    $query = $connection->prepare("SELECT room_id, COUNT(*) AS total FROM (
+        SELECT cs.room_id, UPPER(TRIM(ar.student_code)) AS person_code
+        FROM attendance_records ar JOIN class_sessions cs ON cs.id = ar.class_session_id
+        WHERE ar.check_out_at IS NULL AND ar.checkout_deadline_at IS NOT NULL
+          AND ar.checkout_deadline_at > :class_now AND ar.check_in_at <= :class_start
+        UNION
+        SELECT rv.room_id, UPPER(TRIM(rv.person_code)) AS person_code
+        FROM room_visits rv
+        WHERE rv.check_out_at IS NULL AND rv.planned_end_at IS NOT NULL
+          AND rv.planned_end_at > :visit_now AND rv.check_in_at <= :visit_start
+    ) active_people GROUP BY room_id");
+    $query->execute([':class_now'=>$now, ':class_start'=>$now, ':visit_now'=>$now, ':visit_start'=>$now]);
+    return $query->fetchAll(PDO::FETCH_KEY_PAIR);
+}
+
 function list_rooms(): array
 {
     $rows = db()->query(room_select_sql() . " ORDER BY CASE r.status WHEN 'available' THEN 0 WHEN 'maintenance' THEN 1 ELSE 2 END, r.code")

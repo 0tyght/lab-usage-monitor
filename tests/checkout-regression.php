@@ -33,9 +33,24 @@ $expect($class['ok'],'class created');
 $session=get_class_session((int)$class['id']);
 $student=register_student_attendance($session['qr_token'],['student_code'=>'660004','student_name'=>'ผู้ทดสอบคลาส','client_request_id'=>'checkout-class-test-01']);
 $expect($student['ok'],'class attendance records deadline');
+$input['person_code']='660006'; $input['client_request_id']=bin2hex(random_bytes(16));
+$activeVisit=record_room_visit($token,$input,bin2hex(random_bytes(32)));
+// A class occupies the room, so insert an independent earlier walk-in to exercise combined reporting.
+if (!$activeVisit['ok']) {
+    db()->prepare("INSERT INTO room_visits(room_id,person_code,person_name,person_role,purpose,check_in_at,planned_end_at,receipt_hash,client_request_id,created_at) VALUES (?,?,?,'student',?,?,?,?,?,?)")
+      ->execute([$room,'660006','ผู้ทดสอบนอกคลาส','ทดสอบ',$now,gmdate('Y-m-d\TH:i:s\Z',time()+3600),hash('sha256','combined-test'),bin2hex(random_bytes(16)),$now]);
+    $activeVisit=['id'=>(int)db()->lastInsertId()];
+}
+$counts=active_room_user_counts();
+$expect((int)($counts[$room] ?? 0)===2,'Room count includes active class and outside-class users');
+db()->prepare('UPDATE room_visits SET person_code=? WHERE id=?')->execute(['660004',$activeVisit['id']]);
+$expect((int)(active_room_user_counts()[$room] ?? 0)===1,'The same person is counted once across entry paths');
+db()->prepare('UPDATE room_visits SET planned_end_at=? WHERE id=?')->execute([$deadline,$activeVisit['id']]);
+$expect((int)(active_room_user_counts()[$room] ?? 0)===1,'Expired outside-class use does not inflate active count');
 $found=find_active_checkout($token,'660004');
 $expect(count($found)===1 && $found[0]['kind']==='class','class attendance can be found with room QR');
 $expect(confirm_room_checkout($token,'660004','class',(int)$student['id'])['ok'],'class attendance can check out');
+$expect(!isset(active_room_user_counts()[$room]),'Checked-out and timed-out people are not counted');
 $student2=register_student_attendance($session['qr_token'],['student_code'=>'660005','student_name'=>'ผู้ทดสอบหมดเวลา','client_request_id'=>'checkout-class-test-02']);
 $expect($student2['ok'],'second class attendance can check in');
 db()->prepare('UPDATE attendance_records SET checkout_deadline_at=? WHERE id=?')->execute([$deadline,$student2['id']]);
