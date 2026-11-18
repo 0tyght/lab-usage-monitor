@@ -790,13 +790,13 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                     </section>
                     <div class="dashboard-grid">
                         <section class="section-block">
-                            <div class="section-heading"><div><h2>สถานะห้องปฏิบัติการ</h2><p>อิงช่วงเวลาเรียนของคลาส การปิดรับลงชื่อไม่ทำให้การจองห้องสิ้นสุดก่อนเวลา</p></div><a href="?page=rooms" class="text-link">ดูทุกห้อง</a></div>
+                            <div class="section-heading"><div><h2>สถานะห้องปฏิบัติการ</h2><p>สถานะอิงตารางเรียน · จำนวนคนอิงรายการที่ลงชื่อเข้าและยังไม่ออก</p></div><a href="?page=rooms" class="text-link">ดูทุกห้อง</a></div>
                             <div class="room-list">
                                 <?php foreach ($data['rooms'] as $room): ?>
                                     <article class="room-row">
                                         <span class="room-code"><?= e($room['code']) ?></span>
-                                        <span class="room-info"><strong><?= e($room['name']) ?></strong><small><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?></small></span>
-                                        <span class="status status--<?= e($room['live_status']) ?>"><span aria-hidden="true"></span><?= e(status_label($room['live_status'])) ?></span>
+                                        <span class="room-info"><strong><?= e($room['name']) ?></strong><small><?= e($room['building']) ?> · ชั้น <?= e($room['floor']) ?> · ลงชื่ออยู่ <?= (int)($data['room_users'][$room['id']] ?? 0) ?> คน</small></span>
+                                        <span class="status status--<?= e($room['live_status']) ?>"><span aria-hidden="true"></span><?= e($room['live_status'] === 'available' ? 'ไม่มีคลาสขณะนี้' : ($room['live_status'] === 'active' ? 'มีคลาสตามตาราง' : status_label($room['live_status']))) ?></span>
                                     </article>
                                 <?php endforeach; ?>
                             </div>

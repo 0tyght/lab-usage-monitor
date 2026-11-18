@@ -1204,6 +1204,7 @@ function dashboard_data(): array
         'rooms_in_use' => $roomsInUse,
         'room_total' => $roomTotal,
         'issues_total' => (int) $issues->fetchColumn(),
+        'room_users' => active_room_user_counts(),
         'rooms' => array_slice(list_rooms(), 0, 5),
         'recent' => list_class_sessions([], 8),
     ];

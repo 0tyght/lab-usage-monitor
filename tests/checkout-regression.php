@@ -43,6 +43,7 @@ if (!$activeVisit['ok']) {
 }
 $counts=active_room_user_counts();
 $expect((int)($counts[$room] ?? 0)===2,'Room count includes active class and outside-class users');
+$expect((int)(dashboard_data()['room_users'][$room] ?? 0)===2,'Dashboard uses the same combined active room count');
 db()->prepare('UPDATE room_visits SET person_code=? WHERE id=?')->execute(['660004',$activeVisit['id']]);
 $expect((int)(active_room_user_counts()[$room] ?? 0)===1,'The same person is counted once across entry paths');
 db()->prepare('UPDATE room_visits SET planned_end_at=? WHERE id=?')->execute([$deadline,$activeVisit['id']]);
