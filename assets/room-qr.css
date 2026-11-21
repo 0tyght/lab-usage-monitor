@@ -47,6 +47,24 @@
 .room-checkout summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
 .room-checkout summary:focus-visible { outline: 3px solid var(--brand-600); outline-offset: 3px; }
 
+.room-flow__header h1 { margin: 0 0 4px; font-size: 26px; }
+.room-flow__header p { margin: 0; }
+.room-flow__room { font-weight: 600; color: var(--brand-900); }
+.room-flow__tabs { display: flex; margin-top: 20px; border-bottom: 1px solid var(--border); }
+.room-flow__tabs a { flex: 1; display: flex; justify-content: center; align-items: center; min-height: 48px; padding: 10px; color: var(--muted); text-decoration: none; font-weight: 700; border-bottom: 3px solid transparent; }
+.room-flow__tabs a.is-active { color: var(--brand-600); border-bottom-color: var(--brand-600); }
+.room-flow__tabs a:focus-visible { outline: 3px solid var(--brand-600); outline-offset: -3px; }
+.room-flow__content h2 { margin: 0 0 8px; }
+.room-flow__content > .helper-text { margin-bottom: 20px; }
+.room-flow__class, .room-flow__notice { background: #eef8f6; border: 1px solid #badcd6; border-radius: 8px; padding: 16px; color: #173d3a; }
+.room-flow__class { display: grid; gap: 4px; }
+.room-flow__classes { border: 0; padding: 0; margin: 0; }
+.room-flow__classes legend { font-weight: 700; margin-bottom: 8px; }
+.room-flow__classes label { display: flex; gap: 12px; align-items: flex-start; padding: 12px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 8px; }
+.room-flow__classes input { margin-top: 6px; }
+.room-flow__choice { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
+.room-flow__match { padding: 12px 0; border-bottom: 1px solid var(--border); }
+
 .room-search .field { flex: 1 1 280px; max-width: 520px; }
 .room-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .room-table-actions .text-link, .room-table-actions .text-button { display: inline-flex; align-items: center; min-height: 44px; }

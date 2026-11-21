@@ -21,7 +21,7 @@ function public_room_url(string $token): string
 function room_current_classes(int $roomId, ?int $now=null): array
 {
     $now ??= time();
-    $query=db()->prepare("SELECT cs.id,cs.course_code,cs.course_name,cs.section,cs.starts_at,cs.ends_at,cs.status,cs.checkin_mode,cs.admission_lead_minutes,cs.qr_token,u.full_name AS lecturer_name FROM class_sessions cs JOIN users u ON u.id=cs.lecturer_user_id WHERE cs.room_id=? AND cs.status<>'cancelled' AND cs.starts_at<=? AND cs.ends_at>? ORDER BY cs.starts_at,cs.id");
+    $query=db()->prepare("SELECT cs.id,cs.course_code,cs.course_name,cs.section,cs.starts_at,cs.ends_at,cs.status,cs.checkin_mode,cs.admission_lead_minutes,cs.qr_token,u.full_name AS lecturer_name FROM class_sessions cs JOIN users u ON u.id=cs.lecturer_user_id WHERE cs.room_id=? AND cs.status<>'cancelled' AND (cs.starts_at<=? OR (cs.status='open' AND cs.checkin_mode='manual')) AND cs.ends_at>? ORDER BY cs.starts_at,cs.id");
     $query->execute([$roomId,gmdate('Y-m-d\TH:i:s\Z',$now+600),gmdate('Y-m-d\TH:i:s\Z',$now)]);
     return $query->fetchAll();
 }

@@ -336,17 +336,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         redirect_to('student-checkin', ['token' => $token]);
     }
 
-    if (in_array($action,['room_checkout_find','room_checkout_confirm'],true)) {
+    if ($action === 'room_class_attendance') {
+        $roomToken=(string)($_POST['room_token'] ?? '');
+        $room=public_room($roomToken);
+        $classToken=(string)($_POST['class_token'] ?? '');
+        $available=$room && $room['status']==='available' ? room_current_classes((int)$room['id']) : [];
+        $matches=array_values(array_filter($available,static fn($class)=>hash_equals((string)$class['qr_token'],$classToken) && class_checkin_status($class)==='open'));
+        $result=count($matches)===1 ? register_student_attendance($classToken,$_POST) : visit_error('คลาสไม่พร้อมรับลงชื่อแล้ว กรุณาตรวจสอบอีกครั้ง');
+        if ($result['ok']) {
+            $saved=db()->prepare('SELECT check_in_at FROM attendance_records WHERE id=?');
+            $saved->execute([(int)$result['id']]);
+            $_SESSION['room_class_success']=['token'=>$roomToken,'class'=>$matches[0]['course_name'],'code'=>strtoupper(trim((string)($_POST['student_code'] ?? ''))),'at'=>$saved->fetchColumn() ?: utc_now(),'duplicate'=>(bool)($result['duplicate'] ?? false)];
+        }
+        set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกการเข้าใช้แล้ว':'ยังบันทึกไม่ได้',$result['ok'] ? (($result['duplicate'] ?? false) ? 'รหัสนี้ลงชื่อในคลาสแล้ว' : 'สแกน QR ห้องอีกครั้งเมื่อออกจากห้อง หากไม่ได้สแกนออก ระบบบันทึก Time out เมื่อคลาสสิ้นสุด') : (!empty($result['errors']) ? implode(' ',array_values($result['errors'])) : ($result['message'] ?? 'กรุณาลองอีกครั้ง')));
+        if (!$result['ok']) $_SESSION['room_class_input']=['student_code'=>$_POST['student_code'] ?? '', 'student_name'=>$_POST['student_name'] ?? ''];
+        redirect_to('room-checkin',['token'=>$roomToken,'mode'=>'entry']);
+    }
+
+    if (in_array($action,['room_checkout_find','room_checkout_confirm','room_checkout_direct'],true)) {
         $token=(string)($_POST['token'] ?? '');
         $code=strtoupper(trim((string)($_POST['person_code'] ?? '')));
-        if ($action==='room_checkout_find') {
+        if ($action==='room_checkout_direct') {
+            $rows=find_active_checkout($token,$code);
+            if (count($rows)===1) {
+                $result=confirm_room_checkout($token,$code,$rows[0]['kind'],(int)$rows[0]['id']);
+                set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกเวลาออกแล้ว':'ยังบันทึกไม่ได้',$result['ok']?'เวลาออก '.thai_datetime($result['at']):($result['message'] ?? 'กรุณาลองอีกครั้ง'));
+            } elseif (count($rows)>1) {
+                $_SESSION['room_checkout_search']=['token'=>$token,'code'=>$code];
+            } else set_flash('error','ไม่พบรายการที่กำลังใช้งาน','ตรวจสอบรหัสและห้อง หรือรายการอาจหมดเวลาและปิดอัตโนมัติแล้ว');
+        } elseif ($action==='room_checkout_find') {
             $_SESSION['room_checkout_search']=['token'=>$token,'code'=>$code];
         } else {
             $result=confirm_room_checkout($token,$code,(string)($_POST['kind'] ?? ''),(int)($_POST['record_id'] ?? 0));
             unset($_SESSION['room_checkout_search']);
             set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกเวลาออกแล้ว':'ยังบันทึกไม่ได้',$result['message'] ?? 'บันทึกเวลาออกเรียบร้อย');
         }
-        redirect_to('room-checkin',['token'=>$token]);
+        redirect_to('room-checkin',['token'=>$token,'mode'=>'exit']);
     }
 
     if (in_array($action,['room_visit_start','room_visit_end'],true)) {

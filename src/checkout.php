@@ -45,7 +45,7 @@ function confirm_room_checkout(string $token, string $code, string $kind, int $i
         if ($q->rowCount()!==1) { $connection->commit(); return visit_error('ไม่พบรายการที่ยังเปิดอยู่ หรือถึงเวลาปิดอัตโนมัติแล้ว'); }
         audit_log('room_checkout_confirmed',$kind==='class'?'attendance_record':'room_visit',$id,['room_id'=>(int)$room['id']],null);
         $connection->commit();
-        return ['ok'=>true];
+        return ['ok'=>true,'at'=>$now];
     } catch (Throwable $e) {
         return visit_error('บันทึกเวลาออกไม่สำเร็จ กรุณาลองอีกครั้ง');
     } finally {
