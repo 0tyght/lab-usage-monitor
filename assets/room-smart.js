@@ -52,11 +52,11 @@
       if (request !== sequence || input.value.trim().toUpperCase() !== code) return;
       if (!result.ok) throw new Error('lookup');
       if (result.active) {
-        status.textContent = 'พบรายการที่กำลังใช้ห้อง กดบันทึกเวลาออกเมื่อออกจากห้อง';
+        status.textContent = 'คุณกำลังใช้ห้องนี้อยู่';
         exitForm.querySelector('input[name="person_code"]').value = code;
         exitForm.hidden = false;
       } else {
-        status.textContent = 'ไม่พบรายการที่กำลังใช้ห้อง กรอกข้อมูลเพื่อบันทึกเวลาเข้า';
+        status.textContent = '';
         if (entryCode) entryCode.value = code;
         if (role) {
           role.value = result.role || '';
@@ -75,7 +75,7 @@
     ++sequence;
     if (controller) controller.abort();
     clear();
-    status.textContent = input.value ? 'รอตรวจสอบรหัส…' : 'กรอกรหัสเพื่อเริ่มต้น';
+    status.textContent = input.value ? '' : 'กรอกรหัสเพื่อเริ่มต้น';
     timer = setTimeout(lookup, 600);
   });
   retry.addEventListener('click', lookup);

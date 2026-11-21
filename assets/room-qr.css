@@ -68,6 +68,7 @@
 .room-smart > .helper-text { margin-bottom: 16px; }
 .room-smart > .field { margin-bottom: 12px; }
 .room-smart [role="status"] { margin: 0 0 16px; color: #334e5c; }
+.room-smart [role="status"]:empty { display: none; }
 .room-smart + .room-flow__content { margin-top: 16px; }
 .room-flow [hidden] { display: none !important; }
 
