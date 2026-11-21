@@ -82,7 +82,7 @@ test('fallback cannot redirect to an untrusted or unhealthy server', async () =>
       if(url===bad.origin+'/?health=1') return response({status:'ok',service:'lums',gatewayId:token});
       throw new Error('unreachable');
     }});
-    assert.equal(result.status,'offline');
+    assert.equal(result.status,'unreachable');
   }
 });
 test('offline status checks branch but never probes a destination', async () => {
@@ -109,15 +109,23 @@ for (const body of [{ status: 'ok', service: 'other', gatewayId: token }, { stat
   test(`unhealthy/mismatched server stays offline: ${JSON.stringify(body)}`, async () => {
     let count = 0;
     const result = await checkConnection({ fetcher: async () => response(++count === 1 ? runtime : body) });
-    assert.equal(result.status, 'offline');
+    assert.equal(result.status, 'unreachable');
   });
 }
 test('disconnected tunnel and HTTP 5xx are offline', async () => {
   for (const throws of [true, false]) {
     let count = 0;
     const result = await checkConnection({ fetcher: async () => { if (++count === 1) return response(runtime); if (throws) throw new Error(); return response({}, 502); } });
-    assert.equal(result.status, 'offline');
+    assert.equal(result.status, 'unreachable');
   }
+});
+test('GitHub API fallback works when raw CDN is unavailable', async () => {
+  const result=await checkConnection({fetcher:async url=>{
+    if (url.startsWith(RUNTIME_URL)) throw new Error('raw blocked');
+    if (url===RUNTIME_FALLBACK_URL) return response(runtime);
+    return response({status:'ok',service:'lums',gatewayId:token});
+  }});
+  assert.equal(result.status,'ready');
 });
 test('invalid class link makes no network request', async () => {
   await assert.rejects(checkConnection({ search: '?token=bad', fetcher: async () => { assert.fail('must not fetch'); } }), /link/);

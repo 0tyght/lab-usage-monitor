@@ -23,12 +23,16 @@ export function classQuery(search) {
 export async function checkConnection({ search = '', fetcher = fetch, signal } = {}) {
   const query = classQuery(search);
   const options = { cache: 'no-store', credentials: 'omit', referrerPolicy: 'no-referrer', signal };
-  let response;
-  try { response = await fetcher(`${RUNTIME_URL}?t=${Date.now()}`, options); } catch { throw new Error('network'); }
-  if (response.status === 404) return { status: 'unconfigured' };
-  if (!response.ok) throw new Error('network');
-  let runtime;
-  try { runtime = validateRuntime(await response.json()); } catch { throw new Error('config'); }
+  let runtime = null;
+  let firstError = 'network';
+  try {
+    const response = await fetcher(`${RUNTIME_URL}?t=${Date.now()}`, options);
+    if (response.status === 404) firstError = 'unconfigured';
+    else if (response.ok) {
+      try { runtime = validateRuntime(await response.json()); }
+      catch { firstError = 'config'; }
+    }
+  } catch { /* Try the independent GitHub API endpoint below. */ }
   const healthy = async candidate => {
     try {
       const health = await fetcher(`${candidate.origin}/?health=1`, options);
@@ -37,14 +41,25 @@ export async function checkConnection({ search = '', fetcher = fetch, signal } =
       return data.status === 'ok' && data.service === 'lums' && data.gatewayId === candidate.gatewayId;
     } catch { return false; }
   };
-  if (runtime.status === 'online' && await healthy(runtime)) return { status: 'ready', destination: runtime.origin + '/' + query };
+  if (runtime?.status === 'online' && await healthy(runtime)) return { status: 'ready', destination: runtime.origin + '/' + query };
   // GitHub's raw CDN can serve the previous tunnel briefly after a restart.
   // Consult the branch directly only on failure, then validate it and its health.
   try {
     const fresh = await fetcher(RUNTIME_FALLBACK_URL, { ...options, headers: { Accept: 'application/vnd.github.raw+json' } });
-    if (!fresh.ok) return { status: 'offline' };
+    if (!fresh.ok) {
+      if (runtime) return { status: 'unreachable' };
+      if (firstError === 'unconfigured' && fresh.status === 404) return { status: 'unconfigured' };
+      throw new Error(firstError);
+    }
     const current = validateRuntime(await fresh.json());
     if (current.status === 'online' && await healthy(current)) return { status: 'ready', destination: current.origin + '/' + query };
-  } catch { /* Unavailable or rate-limited fallback is still offline. */ }
-  return { status: 'offline' };
+    if (current.status === 'offline') return { status: 'offline' };
+    return { status: 'unreachable' };
+  } catch (error) {
+    if (!runtime) {
+      if (error.message === 'unconfigured') return { status: 'unconfigured' };
+      throw new Error(firstError === 'config' ? 'config' : 'network');
+    }
+  }
+  return { status: 'unreachable' };
 }

@@ -14,7 +14,8 @@ if (isStudent) {
 }
 
 const states = {
-  offline: ['เซิร์ฟเวอร์ยังไม่พร้อมใช้งาน', 'เครื่องเซิร์ฟเวอร์อาจปิดอยู่ หรือการเชื่อมต่อขัดข้อง กรุณารอผู้ดูแลเปิดระบบแล้วลองอีกครั้ง'],
+  offline: ['ระบบปิดให้บริการอยู่', 'ผู้ดูแลปิดระบบไว้ กรุณาติดต่อผู้ดูแลห้อง'],
+  unreachable: ['ยังตรวจสอบระบบไม่ได้', 'การเชื่อมต่ออาจขัดข้องชั่วคราว ระบบอาจยังเปิดอยู่ กรุณาลองอีกครั้ง'],
   unconfigured: ['ยังไม่ได้เปิดระบบออนไลน์', 'ลิงก์เข้าระบบพร้อมแล้ว รอผู้ดูแลเปิดเซิร์ฟเวอร์ครั้งแรก'],
   network: ['ตรวจสอบการเชื่อมต่อไม่ได้', 'กรุณาตรวจสอบอินเทอร์เน็ตของคุณ แล้วกดตรวจสอบอีกครั้ง'],
   config: ['ข้อมูลการเชื่อมต่อไม่ถูกต้อง', 'ระบบหยุดการเชื่อมต่อเพื่อความปลอดภัย กรุณาแจ้งผู้ดูแลให้เปิดระบบใหม่'],
@@ -23,7 +24,9 @@ const states = {
 const normalHelp = document.querySelector('#help-detail').textContent;
 
 async function connect() {
-  document.querySelector('.actions').hidden = false;
+  document.querySelector('.actions').hidden = true;
+  document.querySelector('#help').hidden = true;
+  document.querySelector('#operator-help').hidden = true;
   document.querySelector('#help-detail').textContent = normalHelp;
   retry.disabled = true;
   next.hidden = true;
@@ -31,10 +34,20 @@ async function connect() {
   status.dataset.state = 'loading';
   title.textContent = 'กำลังตรวจสอบการเชื่อมต่อ';
   detail.textContent = 'กำลังค้นหาเซิร์ฟเวอร์ล่าสุด กรุณารอสักครู่';
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12000);
+  const attempt = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    try { return await checkConnection({ search: location.search, signal: controller.signal }); }
+    finally { clearTimeout(timeout); }
+  };
   try {
-    const result = await checkConnection({ search: location.search, signal: controller.signal });
+    let result;
+    try { result = await attempt(); }
+    catch (error) { if (error.message !== 'network') throw error; result = {status:'unreachable'}; }
+    if (result.status === 'unreachable') {
+      detail.textContent = 'การเชื่อมต่อช้ากว่าปกติ กำลังลองอีกครั้ง';
+      result = await attempt();
+    }
     if (result.status === 'ready') {
       status.dataset.state = 'ready';
       title.textContent = 'เชื่อมต่อสำเร็จ';
@@ -42,20 +55,25 @@ async function connect() {
       next.textContent = isStudent ? 'เปิดหน้าลงชื่อ' : 'เข้าสู่ระบบ';
       next.href = result.destination;
       next.hidden = false;
+      document.querySelector('.actions').hidden = false;
       location.replace(result.destination);
       return;
     }
-    status.dataset.state = 'offline';
+    status.dataset.state = result.status === 'offline' ? 'offline' : 'error';
     [title.textContent, detail.textContent] = states[result.status];
   } catch (error) {
     status.dataset.state = 'error';
     [title.textContent, detail.textContent] = states[error.message] || states.network;
     if (error.message === 'link') {
-      document.querySelector('.actions').hidden = true;
+      status.dataset.state = 'bad-link';
       document.querySelector('#help-detail').textContent = 'ลิงก์นี้มีรหัสห้องหรือคลาสไม่ครบ หรือรูปแบบไม่ถูกต้อง กรุณาขอ QR ที่ถูกต้องจากผู้ดูแล';
     }
   } finally {
-    clearTimeout(timeout);
+    if (status.dataset.state !== 'ready') {
+      document.querySelector('.actions').hidden = status.dataset.state === 'bad-link';
+      document.querySelector('#help').hidden = false;
+      if (!isStudent) document.querySelector('#operator-help').hidden = false;
+    }
     retry.disabled = false;
     section.setAttribute('aria-busy', 'false');
     document.querySelector('#checked').textContent = 'ตรวจสอบล่าสุด ' + new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';

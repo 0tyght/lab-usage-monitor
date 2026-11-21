@@ -1110,9 +1110,15 @@ function register_student_attendance(string $token, array $input): array
             $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
             return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
         }
-        $existing=$connection->prepare('SELECT id FROM attendance_records WHERE class_session_id=? AND student_code=?');
+        $existing=$connection->prepare('SELECT id,check_out_at FROM attendance_records WHERE class_session_id=? AND student_code=?');
         $existing->execute([$session['id'],$studentCode]);
-        if (($existingId=$existing->fetchColumn())!==false) return ['ok'=>true,'id'=>(int)$existingId,'duplicate'=>true,'message'=>'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
+        if ($prior=$existing->fetch()) {
+            if ($prior['check_out_at']!==null) {
+                $message='รหัสนี้บันทึกออกจากคลาสแล้ว ระบบยังไม่รองรับการเข้าอีกครั้งในคลาสเดิม กรุณาติดต่อผู้ดูแล';
+                return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
+            }
+            return ['ok'=>true,'id'=>(int)$prior['id'],'duplicate'=>true,'message'=>'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
+        }
         $now=utc_now();
         if ($now >= $session['ends_at']) return ['ok'=>false,'message'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้','errors'=>['form'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้']];
         $insert = $connection->prepare('INSERT INTO attendance_records (class_session_id, student_code, student_name, check_in_at, checkout_deadline_at, client_request_id, created_at) VALUES (:class_id, :student_code, :student_name, :check_in_at, :deadline, :request_id, :created_at)');

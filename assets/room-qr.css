@@ -64,6 +64,12 @@
 .room-flow__classes input { margin-top: 6px; }
 .room-flow__choice { margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px; }
 .room-flow__match { padding: 12px 0; border-bottom: 1px solid var(--border); }
+.room-smart h2 { margin: 0 0 8px; }
+.room-smart > .helper-text { margin-bottom: 16px; }
+.room-smart > .field { margin-bottom: 12px; }
+.room-smart [role="status"] { margin: 0 0 16px; color: #334e5c; }
+.room-smart + .room-flow__content { margin-top: 16px; }
+.room-flow [hidden] { display: none !important; }
 
 .room-search .field { flex: 1 1 280px; max-width: 520px; }
 .room-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }

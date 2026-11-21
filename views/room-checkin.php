@@ -20,8 +20,8 @@ if ($scanRoom) {
         }
     }
     $receipt=$holder ? room_visit_receipt($holder['receipt']) : null;
-    if (isset($_GET['new_visit']) && $receipt && $receipt['check_out_at']) { $holder=null; $receipt=null; }
-    if (!$holder || (!$receipt && isset($holder['visit_id']))) {
+    if ($receipt) { $holder=null; }
+    if (!$holder) {
         $holder=['receipt'=>bin2hex(random_bytes(32)),'request'=>bin2hex(random_bytes(16))];
         $_SESSION['room_visit_holders'][$roomToken]=$holder;
     }
@@ -45,11 +45,18 @@ $roomLink='?page=room-checkin&token='.rawurlencode($roomToken);
 <section class="student-panel"><h1>ไม่พบห้องปฏิบัติการ</h1><p>กรุณาสแกน QR หน้าห้องอีกครั้ง หรือขอลิงก์จากผู้ดูแลห้อง</p></section>
 <?php else: ?>
 <section class="student-panel room-flow__header"><h1><?= e($scanRoom['code']) ?></h1><p class="room-flow__room"><?= e($scanRoom['name']) ?></p><p class="helper-text"><?= e($scanRoom['building'].' · ชั้น '.$scanRoom['floor']) ?></p></section>
-<nav class="room-flow__tabs" aria-label="เลือกการเข้าใช้หรือออกจากห้อง">
+<nav class="room-flow__tabs" aria-label="เลือกการเข้าใช้หรือออกจากห้อง" <?= $classSuccess ? 'hidden' : '' ?>>
 <a class="<?= $mode==='entry'?'is-active':'' ?>" <?= $mode==='entry'?'aria-current="page"':'' ?> href="<?= e($roomLink.'&mode=entry') ?>">เข้าใช้ห้อง</a>
 <a class="<?= $mode==='exit'?'is-active':'' ?>" <?= $mode==='exit'?'aria-current="page"':'' ?> href="<?= e($roomLink.'&mode=exit') ?>">ออกจากห้อง</a>
 </nav>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>" role="status"><strong><?= e($flash['title']) ?></strong><?php if ($flash['message']): ?><span><?= e($flash['message']) ?></span><?php endif; ?></div><?php endif; ?>
+<section class="student-panel room-smart" id="room-smart" data-room-token="<?= e($roomToken) ?>" data-static="<?= $classSuccess || $mode==='exit' ? 'yes' : 'no' ?>" hidden>
+<h2>บันทึกการใช้ห้อง</h2><p class="helper-text">กรอกรหัส ระบบจะตรวจสอบการเข้า–ออกให้</p>
+<label class="field"><span>รหัสนิสิต / รหัสบุคลากร</span><input id="room-smart-code" autocomplete="off" minlength="4" maxlength="30"></label>
+<p id="room-smart-status" role="status" aria-live="polite">กรอกรหัสเพื่อเริ่มต้น</p>
+<button type="button" id="room-smart-retry" class="button button--secondary" hidden>ตรวจสอบอีกครั้ง</button>
+<form method="post" id="room-smart-exit" class="form-stack" hidden><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="token" value="<?= e($roomToken) ?>"><input type="hidden" name="action" value="room_checkout_direct"><input type="hidden" name="person_code"><button class="button button--primary button--block" type="submit">บันทึกเวลาออก</button></form>
+</section>
 <section class="student-panel room-flow__content">
 <?php if ($mode==='exit'): ?>
 <h2>ออกจากห้อง</h2><p class="helper-text">กรอกรหัสที่ใช้ลงชื่อเข้า ระบบจะบันทึกเวลาออกทันที</p>
@@ -60,10 +67,6 @@ $roomLink='?page=room-checkin&token='.rawurlencode($roomToken);
 <?php foreach ($checkoutRows as $entry): ?><form method="post" class="room-flow__match"><p><strong><?= e($entry['name']) ?></strong> · <?= e($entry['purpose']) ?><br>เข้า <?= e(thai_datetime($entry['check_in_at'])) ?></p><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="room_checkout_confirm"><input type="hidden" name="token" value="<?= e($roomToken) ?>"><input type="hidden" name="person_code" value="<?= e($checkoutCode) ?>"><input type="hidden" name="kind" value="<?= e($entry['kind']) ?>"><input type="hidden" name="record_id" value="<?= (int)$entry['id'] ?>"><button class="button button--secondary button--block" type="submit">ยืนยันออกจากรายการนี้</button></form><?php endforeach; ?></div><?php endif; ?>
 <?php elseif ($classSuccess): ?>
 <h2><?= !empty($classSuccess['duplicate'])?'ลงชื่อในคลาสนี้ไว้แล้ว':'ลงชื่อเข้าเรียนเรียบร้อย' ?></h2><p><?= e($classSuccess['class']) ?> · <?= e($classSuccess['code']) ?></p><p>เวลาเข้า <?= e(thai_datetime($classSuccess['at'])) ?></p><p class="helper-text">สแกน QR ประจำห้องอีกครั้งเมื่อออกจากห้อง</p><a class="button button--secondary" href="<?= e($roomLink) ?>">กลับหน้าห้อง</a>
-<?php elseif ($receipt && !$receipt['check_out_at']): ?>
-<h2>คุณลงชื่อเข้าใช้ห้องนี้แล้ว</h2><p><?= e($receipt['person_name']) ?> · <?= e($receipt['person_code']) ?></p><p>เวลาเข้า <?= e(thai_datetime($receipt['check_in_at'])) ?></p><p class="helper-text">เมื่อออกจากห้อง ให้สแกน QR อีกครั้งแล้วเลือก “ออกจากห้อง”</p>
-<?php elseif ($receipt && $receipt['check_out_at'] && !isset($_GET['new_visit'])): ?>
-<h2>บันทึกเวลาออกแล้ว</h2><p>เวลาออก / ปิดรายการ <?= e(thai_datetime($receipt['check_out_at'])) ?></p><p><?= !empty($receipt['auto_closed_at'])?'Time out · ระบบปิดตามเวลาที่กำหนด':'รายการนี้สิ้นสุดแล้ว' ?></p><a class="button button--secondary" href="<?= e($roomLink.'&new_visit=1') ?>">เข้าใช้ห้องอีกครั้ง</a>
 <?php elseif ($scanRoom['status']!=='available'): ?>
 <h2>ห้องนี้งดรับการเข้าใช้ชั่วคราว</h2><p>กรุณาติดต่อผู้ดูแลห้อง หากต้องการบันทึกเวลาออกให้เลือก “ออกจากห้อง”</p>
 <?php elseif ($openClasses): ?>
@@ -92,4 +95,4 @@ $roomLink='?page=room-checkin&token='.rawurlencode($roomToken);
 <?php endif; ?>
 </section>
 <p class="privacy-note">ลงชื่อเฉพาะตัวเอง ข้อมูลใช้ติดตามการใช้ห้อง หากสแกนไม่ได้สามารถขอลิงก์หน้าห้องจากผู้ดูแล</p>
-<?php endif; ?></main><script src="<?= e(asset_url('app.js')) ?>" defer></script></body></html>
+<?php endif; ?></main><script src="<?= e(asset_url('app.js')) ?>" defer></script><script src="<?= e(asset_url('room-smart.js')) ?>" defer></script></body></html>

@@ -132,6 +132,30 @@ function week_start_date(?string $value = null): DateTimeImmutable
     return $date->modify('monday this week');
 }
 
+if (($_GET['api'] ?? '') === 'room-lookup') {
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    $token=$_POST['csrf_token'] ?? null;
+    $valid=$_SERVER['REQUEST_METHOD']==='POST' && is_string($token) && is_string($_SESSION['_csrf_token'] ?? null)
+        && (int)($_SESSION['_csrf_issued_at'] ?? 0) >= time()-(int)app_config('security.csrf_ttl',7200)
+        && hash_equals($_SESSION['_csrf_token'],$token);
+    $room=public_room((string)($_POST['room_token'] ?? ''));
+    $code=strtoupper(trim((string)($_POST['person_code'] ?? '')));
+    if (!$valid || !$room || !preg_match('/^[A-Z0-9._-]{4,30}$/D',$code)) {
+        http_response_code(422); echo json_encode(['ok'=>false]); exit;
+    }
+    try {
+        $active=find_active_checkout((string)($_POST['room_token'] ?? ''),$code);
+        $query=db()->prepare("SELECT role FROM users WHERE UPPER(TRIM(student_code))=? AND is_active=1 LIMIT 2");
+        $query->execute([$code]); $roles=$query->fetchAll(PDO::FETCH_COLUMN);
+        $role=count($roles)===1 && in_array($roles[0],['student','lecturer','staff'],true) ? $roles[0] : null;
+        echo json_encode(['ok'=>true,'active'=>count($active)>0,'role'=>$role],JSON_UNESCAPED_UNICODE);
+    } catch (Throwable) {
+        http_response_code(503); echo json_encode(['ok'=>false]);
+    }
+    exit;
+}
+
 if (($_GET['fragment'] ?? '') === 'class-panel') {
     header('Cache-Control: no-store');
     header('Content-Type: text/html; charset=UTF-8');
@@ -342,7 +366,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $classToken=(string)($_POST['class_token'] ?? '');
         $available=$room && $room['status']==='available' ? room_current_classes((int)$room['id']) : [];
         $matches=array_values(array_filter($available,static fn($class)=>hash_equals((string)$class['qr_token'],$classToken) && class_checkin_status($class)==='open'));
-        $result=count($matches)===1 ? register_student_attendance($classToken,$_POST) : visit_error('คลาสไม่พร้อมรับลงชื่อแล้ว กรุณาตรวจสอบอีกครั้ง');
+        $code=strtoupper(trim((string)($_POST['student_code'] ?? '')));
+        $result=count($matches)!==1 ? visit_error('คลาสไม่พร้อมรับลงชื่อแล้ว กรุณาตรวจสอบอีกครั้ง')
+            : (find_active_checkout($roomToken,$code) ? visit_error('รหัสนี้กำลังใช้งานห้องอยู่ กรุณาบันทึกเวลาออกก่อน') : register_student_attendance($classToken,$_POST));
         if ($result['ok']) {
             $saved=db()->prepare('SELECT check_in_at FROM attendance_records WHERE id=?');
             $saved->execute([(int)$result['id']]);
@@ -371,7 +397,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             unset($_SESSION['room_checkout_search']);
             set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกเวลาออกแล้ว':'ยังบันทึกไม่ได้',$result['message'] ?? 'บันทึกเวลาออกเรียบร้อย');
         }
-        redirect_to('room-checkin',['token'=>$token,'mode'=>'exit']);
+        redirect_to('room-checkin',['token'=>$token,'mode'=>isset($_SESSION['room_checkout_search']) ? 'exit' : 'entry']);
     }
 
     if (in_array($action,['room_visit_start','room_visit_end'],true)) {
