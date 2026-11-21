@@ -21,7 +21,7 @@
       ctx.font='bold 44px "Noto Sans Thai", sans-serif';ctx.fillText(dialog.querySelector('[data-room-poster] h2').textContent,400,72);
       ctx.font='26px "Noto Sans Thai", sans-serif';ctx.fillText(dialog.querySelector('[data-room-poster] h3').textContent,400,124,720);
       ctx.imageSmoothingEnabled=false;ctx.drawImage(root.querySelector('canvas'),144,176,512,512);
-      ctx.fillText('สแกนลงชื่อเข้าใช้ห้อง',400,752);ctx.font='22px "Noto Sans Thai", sans-serif';ctx.fillText('มีคลาส: เลือกลงชื่อเข้าเรียน',400,806);ctx.fillText('ไม่มีคลาส: ระบุวัตถุประสงค์ และกดออกเมื่อใช้เสร็จ',400,852);ctx.fillText('QR ประจำห้อง · ใช้ได้ทุกครั้ง',400,912);
+      ctx.fillText('สแกนก่อนเข้าใช้ แล้วกรอกรหัสของตนเอง',400,752);ctx.font='22px "Noto Sans Thai", sans-serif';ctx.fillText('เมื่อใช้เสร็จ สแกน QR นี้อีกครั้ง',400,806);ctx.fillText('เพื่อบันทึกเวลาออก',400,852);ctx.fillText('QR ประจำห้อง · ใช้ได้ทุกครั้ง',400,912);
       const link=document.createElement('a');link.href=canvas.toDataURL('image/png');link.download='LUMS-room-'+dialog.querySelector('[data-room-poster] h2').textContent.replace(/[^a-z0-9_-]/gi,'_')+'.png';link.click();feedback.textContent='ดาวน์โหลดป้าย QR แล้ว';
     }catch{feedback.textContent='ดาวน์โหลดไม่สำเร็จ กรุณาลองใหม่หรือใช้พิมพ์ป้าย / PDF';}finally{button.disabled=false;}
   });

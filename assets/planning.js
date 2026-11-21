@@ -147,7 +147,7 @@
         const row = node("article", undefined, "day-event");
         const detail = node("div");
         detail.append(node("strong", `${event.course_code} · ${event.course_name}`), node("p", `${event.room_code} · ${event.lecturer_name}${event.section ? ` · กลุ่ม ${event.section}` : ""}`), node("span", event.source_label, `event-type ${event.source === "schedule" ? "is-planned" : ""}`));
-        const link = node("a", event.class_id ? "QR / รายชื่อ" : "ดูตาราง", "button button--secondary");
+        const link = node("a", event.class_id ? "รายละเอียดคลาส" : "ดูตาราง", "button button--secondary");
         link.href = detailUrl(event);
         if (event.class_id) { link.dataset.classId=String(event.class_id); link.setAttribute('aria-haspopup','dialog'); }
         const actions = node('div',undefined,'day-event-actions');

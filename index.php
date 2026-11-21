@@ -860,7 +860,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                         </section>
                     </div>
                     <section class="section-block recent-section">
-                        <div class="section-heading"><div><h2>คลาสล่าสุด</h2><p>เปิดดู QR Code และรายชื่อนักศึกษา</p></div><span class="result-count"><?= count($data['recent']) ?> คลาส</span></div>
+                        <div class="section-heading"><div><h2>คลาสล่าสุด</h2><p>เปิดดูรายละเอียดคลาสและรายชื่อ</p></div><span class="result-count"><?= count($data['recent']) ?> คลาส</span></div>
                         <?php render_class_table($data['recent']); ?>
                     </section>
 
@@ -933,7 +933,7 @@ function render_class_table(array $items, bool $filtered = false): void
                     <td data-label="นักศึกษา"><strong><?= e($item['attendance_count']) ?> คน</strong><small>ไม่จำกัดจำนวนผู้ลงชื่อ</small></td>
                     <?php $displayStatus = class_display_status($item); ?>
                     <td data-label="สถานะ"><span class="status status--<?= e($displayStatus) ?>"><span></span><?= e(status_label($displayStatus)) ?></span></td>
-                    <td class="table-action"><a class="button button--small button--secondary" href="?page=classes&amp;class_id=<?= e($item['id']) ?>" data-class-id="<?= (int)$item['id'] ?>" aria-haspopup="dialog" aria-controls="class-info-dialog">QR / รายชื่อ</a></td>
+                    <td class="table-action"><a class="button button--small button--secondary" href="?page=classes&amp;class_id=<?= e($item['id']) ?>" data-class-id="<?= (int)$item['id'] ?>" aria-haspopup="dialog" aria-controls="class-info-dialog">รายละเอียดคลาส</a></td>
                 </tr>
             <?php endforeach; ?>
             </tbody>

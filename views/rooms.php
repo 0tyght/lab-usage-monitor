@@ -225,8 +225,8 @@ $roomStatusOptions = [
             <h2><?= e($posterRoom['code']) ?></h2>
             <h3><?= e($posterRoom['name']) ?></h3>
             <div data-room-qr="<?= e(public_room_url($posterRoom['qr_code'])) ?>" role="img" aria-label="QR ประจำห้อง <?= e($posterRoom['code']) ?>"></div>
-            <p>สแกนก่อนเข้าใช้ · ตรวจชื่อห้อง · ลงชื่อของตนเอง</p>
-            <p>มีคลาส: เลือกลงชื่อเข้าเรียน<br>ไม่มีคลาส: ระบุวัตถุประสงค์ และกดออกเมื่อใช้เสร็จ</p>
+            <p>สแกนก่อนเข้าใช้ แล้วกรอกรหัสของตนเอง</p>
+            <p>เมื่อใช้เสร็จ สแกน QR นี้อีกครั้งเพื่อบันทึกเวลาออก</p>
         </section>
         <label class="field">
             <span>ลิงก์ประจำห้อง (ใช้แทนการสแกนได้)</span>

@@ -139,8 +139,8 @@ $onceClassId=(int)db()->query("SELECT id FROM class_sessions WHERE course_code='
 [$status, , $legacyLocation]=$request('/?page=class-detail&id='.$onceClassId);
 $expect($status===302 && str_contains($legacyLocation,'page=classes') && str_contains($legacyLocation,'class_id='), 'Old detail links redirect to the class hub popup');
 [$status,$fragment]=$request('/?fragment=class-panel&id='.$onceClassId);
-$expect($status===200 && str_contains($fragment,'data-class-qr=') && str_contains($fragment,'data-download-qr') && str_contains($fragment,'data-print-qr'), 'Authorized popup includes QR, PNG export and print controls');
-$expect(str_contains($fragment,'class-panel-attendance') && str_contains($fragment,'data-qr-poster'), 'QR poster and attendance occupy separate sections');
+$expect($status===200 && str_contains($fragment,'qr_room=') && !str_contains($fragment,'data-class-qr='), 'Class popup points to the permanent room QR and does not offer a separate class QR');
+$expect(str_contains($fragment,'class-panel-attendance') && str_contains($fragment,'data-refresh-class'), 'Class details show the attendance list and its refresh action');
 [, $cleanCalendar]=$request('/?page=calendar&month=2030-05&room_id=999999&term_id=999999&source=schedule&q=impossible');
 $cleanDom=new DOMDocument();@$cleanDom->loadHTML('<?xml encoding="UTF-8">'.$cleanCalendar);$cleanXPath=new DOMXPath($cleanDom);
 $expect($cleanXPath->query('//section[@class="calendar-page"]//form')->length===0 && str_contains($cleanCalendar,'ONCEHTTP'), 'Calendar has no filter form and ignores obsolete filters');

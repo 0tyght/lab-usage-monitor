@@ -68,7 +68,7 @@ $roomLink='?page=room-checkin&token='.rawurlencode($roomToken);
 <?php elseif ($classSuccess): ?>
 <h2><?= !empty($classSuccess['duplicate'])?'ลงชื่อในคลาสนี้ไว้แล้ว':'ลงชื่อเข้าเรียนเรียบร้อย' ?></h2><p><?= e($classSuccess['class']) ?> · <?= e($classSuccess['code']) ?></p><p>เวลาเข้า <?= e(thai_datetime($classSuccess['at'])) ?></p><p class="helper-text">สแกน QR ประจำห้องอีกครั้งเมื่อออกจากห้อง</p><a class="button button--secondary" href="<?= e($roomLink) ?>">กลับหน้าห้อง</a>
 <?php elseif ($scanRoom['status']!=='available'): ?>
-<h2>ห้องนี้งดรับการเข้าใช้ชั่วคราว</h2><p>กรุณาติดต่อผู้ดูแลห้อง หากต้องการบันทึกเวลาออกให้เลือก “ออกจากห้อง”</p>
+<h2>ห้องนี้งดรับการเข้าใช้ชั่วคราว</h2><p>กรุณาติดต่อผู้ดูแลห้อง ผู้ที่ลงชื่อเข้าแล้วสามารถบันทึกเวลาออกได้ตามปกติ</p>
 <?php elseif ($openClasses): ?>
 <h2>ลงชื่อเข้าเรียน</h2><p class="helper-text">ตรวจสอบคลาสและกรอกข้อมูลเพื่อบันทึกเวลาเข้า</p>
 <form method="post" class="form-stack"><input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>"><input type="hidden" name="action" value="room_class_attendance"><input type="hidden" name="room_token" value="<?= e($roomToken) ?>"><input type="hidden" name="client_request_id" value="<?= e('web-'.bin2hex(random_bytes(12))) ?>">
