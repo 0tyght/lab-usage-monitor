@@ -22,8 +22,19 @@ function redirect_to(string $page, array $params = []): never
     exit;
 }
 
+function class_panel_context(): array
+{
+    return array_intersect_key($_GET,array_flip(['month','date','day_room_id','week','weekend','term_id','range','series','sort','p','room_id','q','status','tab','date_from','date_to','page_number','time_from','time_to','period_minutes','source','unit','group']));
+}
+
 function redirect_class_panel(int $id): never
 {
+    if (in_array($_POST['action'] ?? '', ['open_class','close_class'], true)) {
+        $source = $_GET['page'] ?? 'classes';
+        if (in_array($source, ['dashboard','schedule','calendar','classes','reports'], true)) {
+            redirect_to($source, ['class_id'=>$id] + class_panel_context());
+        }
+    }
     if (($_GET['page'] ?? '') === 'calendar') {
         $month = valid_iso_date((string)($_POST['class_date'] ?? '')) ? substr($_POST['class_date'],0,7) : ($_GET['month'] ?? date('Y-m'));
         redirect_to('calendar',['month'=>$month,'class_id'=>$id]);
@@ -536,7 +547,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'open_class') {
         $classId = (int) ($_POST['class_id'] ?? 0);
         $result = open_class_session($classId, (string)($_POST['checkin_mode'] ?? 'scheduled'));
-        set_flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'เปิดรับลงชื่อแล้ว' : 'ดำเนินการไม่สำเร็จ', $result['message'] ?? '');
+        set_flash($result['ok'] ? 'success' : 'error', $result['ok'] ? 'บันทึกการเปิดรับลงชื่อแล้ว' : 'ดำเนินการไม่สำเร็จ', $result['message'] ?? '');
         redirect_class_panel($classId);
     }
 
@@ -586,10 +597,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($action === 'create_schedule_session') {
         $result = create_session_from_schedule((int)($_POST['schedule_id'] ?? 0), (string)($_POST['scheduled_date'] ?? ''));
         if ($result['ok']) {
-            set_flash('success', $result['existing'] ?? false ? 'มี QR สำหรับคลาสเรียนนี้แล้ว' : 'เตรียม QR เรียบร้อย', $result['message']);
+            set_flash('success', ($result['existing'] ?? false) ? 'มีคลาสเรียนนี้แล้ว' : 'สร้างคลาสเรียนแล้ว', $result['message']);
             redirect_class_panel((int)$result['id']);
         }
-        set_flash('error', 'สร้าง QR ไม่สำเร็จ', $result['message'] ?? 'กรุณาตรวจสอบวันที่คลาสเรียน');
+        set_flash('error', 'สร้างคลาสเรียนไม่สำเร็จ', $result['message'] ?? 'กรุณาตรวจสอบวันที่คลาสเรียน');
         redirect_to('schedule', ['selected'=>(int)($_POST['schedule_id'] ?? 0)]);
     }
 }
@@ -761,11 +772,12 @@ if ($page === 'login'):
 exit;
 endif;
 
+$isLecturer = $user['role'] === 'lecturer';
 $nav = [
-    'dashboard' => ['ภาพรวม', 'layout-dashboard'],
+    'dashboard' => [$isLecturer ? 'งานสอนวันนี้' : 'ภาพรวม', 'layout-dashboard'],
     'schedule' => ['ตารางเรียน', 'calendar-days'],
     'calendar' => ['ปฏิทินการใช้ห้อง', 'calendar-days'],
-    'classes' => ['คลาสเรียน', 'book-open'],
+    'classes' => [$isLecturer ? 'คลาสของฉัน' : 'คลาสเรียน', 'book-open'],
     'rooms' => ['ห้องปฏิบัติการ', 'door-open'],
     'reports' => ['รายงาน', 'chart-no-axes-combined'],
 ];
@@ -823,11 +835,13 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
                     </div>
                 <?php endif; ?>
 
-                <?php if ($page === 'dashboard'): ?>
+                <?php if ($page === 'dashboard' && $isLecturer): ?>
+                    <?php require __DIR__.'/views/lecturer-dashboard.php'; ?>
+                <?php elseif ($page === 'dashboard'): ?>
                     <?php $data = dashboard_data(); ?>
                     <header class="page-header">
                         <div><p class="eyebrow">ภาพรวมวันนี้</p><h1>สวัสดี <?= e($user['name']) ?></h1><p>ติดตามคลาส ห้องเรียน และการลงชื่อของนักศึกษาจาก QR Code</p></div>
-                        <a href="?page=classes" class="button button--secondary">ดูคลาสทั้งหมด</a>
+                        <a href="?page=classes&amp;range=all" class="button button--secondary">ดูคลาสทั้งหมด</a>
                     </header>
                     <section class="metrics-grid" aria-label="สรุปข้อมูลวันนี้">
                         <article class="metric"><span>คลาสวันนี้</span><strong><?= e($data['today_total']) ?></strong><small>คลาส</small></article>
@@ -879,10 +893,12 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 
                 <?php elseif ($page === 'reports'): ?>
                     <?php
-                    $reportTab = in_array($_GET['tab'] ?? '', ['usage','attendance','walkins'], true) ? (string)$_GET['tab'] : 'usage';
+                    // Existing filtered links without a tab were issued for the timetable usage report.
+                    $defaultTab = $isLecturer && !array_diff_key($_GET,['page'=>true,'class_id'=>true]) ? 'attendance' : 'usage';
+                    $reportTab = in_array($_GET['tab'] ?? '', ['usage','attendance','walkins'], true) ? (string)$_GET['tab'] : $defaultTab;
                     if ($reportTab === 'walkins' && $user['role'] !== 'admin') $reportTab = 'usage';
                     ?>
-                    <header class="page-header"><div><p class="eyebrow">ค้นหา สรุป และส่งออกจากจุดเดียว</p><h1>รายงาน</h1><p>ข้อมูลการลงชื่อ การใช้ห้องตามคลาส และการเข้าใช้นอกคลาสอยู่ในหน้านี้</p></div></header>
+                    <header class="page-header"><div><h1>รายงาน</h1><?php if ($isLecturer): ?><p>รายชื่อผู้เข้าเรียนและชั่วโมงใช้ห้องของคลาสที่คุณสอน</p><?php endif; ?></div></header>
                     <nav class="report-tabs" aria-label="ข้อมูลในรายงาน">
                         <a class="report-tab <?= $reportTab==='attendance'?'is-active':'' ?>" href="?page=reports&amp;tab=attendance" <?= $reportTab==='attendance'?'aria-current="page"':'' ?>>การลงชื่อเข้าเรียน</a>
                         <a class="report-tab <?= $reportTab==='usage'?'is-active':'' ?>" href="?page=reports&amp;tab=usage" <?= $reportTab==='usage'?'aria-current="page"':'' ?>>การใช้ห้องตามคลาส</a>
@@ -913,6 +929,7 @@ $oneOffOpenUrl = $oneOffReturnUrl . '&new_once=1';
 <?php
 function render_class_table(array $items, bool $filtered = false): void
 {
+    $showTeacher = (current_user()['role'] ?? '') !== 'lecturer';
     if (!$items) {
         echo $filtered
             ? '<div class="empty-state"><span data-icon="search"></span><strong>ไม่พบคลาสที่ตรงกับตัวกรอง</strong><span>ลองเปลี่ยนคำค้นหรือสถานะ เพื่อดูคลาสที่ต้องการ</span><a class="button button--secondary" href="?page=classes">ล้างตัวกรอง</a></div>'
@@ -922,15 +939,15 @@ function render_class_table(array $items, bool $filtered = false): void
 ?>
     <div class="table-wrap">
         <table class="data-table">
-            <thead><tr><th>รายวิชา</th><th>วันและเวลา</th><th>ห้อง</th><th>ผู้สอน</th><th>นักศึกษา</th><th>สถานะ</th><th><span class="sr-only">การดำเนินการ</span></th></tr></thead>
+            <thead><tr><th>รายวิชา</th><th>วันและเวลา</th><th>ห้อง</th><?php if ($showTeacher): ?><th>ผู้สอน</th><?php endif; ?><th>ผู้ลงชื่อ</th><th>สถานะ</th><th><span class="sr-only">การดำเนินการ</span></th></tr></thead>
             <tbody>
             <?php foreach ($items as $item): ?>
                 <tr>
                     <td data-label="รายวิชา"><strong><?= e($item['course_code']) ?></strong><small><?= e($item['course_name']) ?><?= $item['section'] ? ' · กลุ่ม ' . e($item['section']) : '' ?></small></td>
                     <td data-label="วันและเวลา"><strong><?= e(thai_datetime($item['starts_at'])) ?></strong><small>ถึง <?= e(thai_datetime($item['ends_at'], false)) ?></small></td>
                     <td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td>
-                    <td data-label="ผู้สอน"><?= e($item['lecturer_name']) ?></td>
-                    <td data-label="นักศึกษา"><strong><?= e($item['attendance_count']) ?> คน</strong><small>ไม่จำกัดจำนวนผู้ลงชื่อ</small></td>
+                    <?php if ($showTeacher): ?><td data-label="ผู้สอน"><?= e($item['lecturer_name']) ?></td><?php endif; ?>
+                    <td data-label="ผู้ลงชื่อ"><strong><?= e($item['attendance_count']) ?> คน</strong></td>
                     <?php $displayStatus = class_display_status($item); ?>
                     <td data-label="สถานะ"><span class="status status--<?= e($displayStatus) ?>"><span></span><?= e(status_label($displayStatus)) ?></span></td>
                     <td class="table-action"><a class="button button--small button--secondary" href="?page=classes&amp;class_id=<?= e($item['id']) ?>" data-class-id="<?= (int)$item['id'] ?>" aria-haspopup="dialog" aria-controls="class-info-dialog">รายละเอียดคลาส</a></td>

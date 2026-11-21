@@ -56,7 +56,7 @@ $roomStatusOptions = [
 <header class="page-header">
     <div>
         <h1>ห้องปฏิบัติการ</h1>
-        <p>จัดการห้องและ QR ประจำห้องได้จากหน้านี้ ระบบไม่จำกัดจำนวนผู้ลงชื่อหรือผู้เข้าใช้ตามความจุห้อง</p>
+        <p><?= $isLecturer?'ค้นหาห้องเพื่อดูสถานะ เปิด QR หน้าห้อง หรือสร้างคลาสเรียน':'ดูสถานะการใช้ห้อง จัดการข้อมูลห้อง และพิมพ์ป้าย QR' ?></p>
     </div>
     <?php if ($user['role'] === 'admin'): ?>
         <a class="button button--primary" href="?page=rooms&amp;new_room=1"><span data-icon="plus"></span>เพิ่มห้อง</a>
@@ -108,7 +108,6 @@ $roomStatusOptions = [
                 </td>
                 <td data-label="ผู้ใช้งานปัจจุบัน">
                     <?= (int)($activeRoomUsers[$room['id']] ?? 0) ?> คน
-                    <small>ลงชื่อเข้าแล้ว ยังไม่ลงชื่อออก</small>
                 </td>
                 <td data-label="การดำเนินการ">
                     <div class="room-table-actions">

@@ -86,7 +86,7 @@
       q("#calendar-day-title").textContent = `การใช้ห้อง · ${thaiDate(date)}`;
       q('[name="date"]', form).value = date;
       q("[data-day-count]", dialog).textContent = `${rows.length} รายการ · เวลาไทย · แผนและคลาสแสดงแยกประเภท`;
-      const reportQuery = new URLSearchParams({page:"reports", date_from:date, date_to:date, room_id:room.value, term_id:context.term_id, source:context.source});
+      const reportQuery = new URLSearchParams({page:"reports", tab:"usage", date_from:date, date_to:date, room_id:room.value, term_id:context.term_id, source:context.source});
       q("[data-day-report]", dialog).href = `?${reportQuery}`;
       const csvQuery = new URLSearchParams(reportQuery); csvQuery.delete('page'); csvQuery.set('download','report-csv');
       q('[data-day-csv]',dialog).href = `?${csvQuery}`;
@@ -151,10 +151,10 @@
         link.href = detailUrl(event);
         if (event.class_id) { link.dataset.classId=String(event.class_id); link.setAttribute('aria-haspopup','dialog'); }
         const actions = node('div',undefined,'day-event-actions');
-        if (!event.class_id) {
+        if (!event.class_id && Date.parse(event.ends_at) > Date.now()) {
           const form=node('form'); form.method='post'; form.action=`?${new URLSearchParams({page:'calendar',month:date.slice(0,7)})}`;
           Object.entries({csrf_token:context.csrf_token,action:'create_schedule_session',schedule_id:event.schedule_id,scheduled_date:date}).forEach(([name,value])=>{const input=node('input');input.type='hidden';input.name=name;input.value=String(value);form.append(input);});
-          const prepare=node('button','เตรียม QR สำหรับคลาสเรียนนี้','button button--primary');prepare.type='submit';form.append(prepare);actions.append(form);
+          const prepare=node('button','สร้างคลาสเรียนวันที่นี้','button button--primary');prepare.type='submit';form.append(prepare);actions.append(form);
         }
         actions.append(link);
         row.append(node("strong", `${event.start_time}–${event.end_time}`), detail, actions);
@@ -233,9 +233,9 @@
     const filters = q('[data-report-filters]');
     if (filters) {
       const advanced = q('.report-options', filters);
-      if (matchMedia('(max-width: 640px)').matches) advanced.open = false;
-      // Reveal invalid controls before native browser validation focuses them.
-      filters.addEventListener('invalid', () => { advanced.open = true; }, true);
+      if (advanced) {
+        advanced.addEventListener('invalid', () => { advanced.open = true; }, true);
+      }
       const exports = qa('.usage-report .schedule-header-actions a');
       const markPending = () => {
         q('[data-report-pending]').hidden = false;

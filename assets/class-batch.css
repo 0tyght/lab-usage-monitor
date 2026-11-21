@@ -26,6 +26,13 @@
 .class-create-footer .is-error, .class-change-dialog .is-error { color: var(--danger); }
 .class-day-controls { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; margin: 16px 0; }
 .class-day-controls .search-field { flex: 1; min-width: 200px; }
+.class-extra-filters summary { min-height: 44px; padding: 10px 0; cursor: pointer; color: var(--brand-700); }
+.class-extra-filters > div { display: flex; flex-wrap: wrap; gap: 8px; }
+@media (max-width: 640px) {
+  .class-day-controls { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); align-items: start; }
+  .class-day-controls .search-field, .class-extra-filters[open] { grid-column: 1 / -1; min-width: 0; }
+  .class-day-controls .field, .class-day-controls input, .class-day-controls select { min-width: 0; width: 100%; }
+}
 .class-list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
 .class-change-dialog { width: min(760px,calc(100% - 32px)); }
 .class-change-dialog [hidden] { display: none !important; }

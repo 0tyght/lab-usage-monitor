@@ -62,6 +62,8 @@ $expect($schedule['ok'], 'Weekly fixture created.');
 $created = create_session_from_schedule($schedule['id'], '2030-01-07');
 $cancelled = create_session_from_schedule($schedule['id'], '2030-01-14');
 $expect($created['ok'] && $cancelled['ok'], 'Linked class fixtures created.');
+$linked=get_class_session($created['id']);
+$expect($linked['status']==='open' && $linked['checkin_mode']==='scheduled' && (int)$linked['admission_lead_minutes']===10 && create_session_from_schedule($schedule['id'],'2030-01-07')['id']===$linked['id'], 'Opening a plan follows room admission rules and repeated creation reuses the lesson');
 db()->prepare("UPDATE class_sessions SET room_id=?, status='closed' WHERE id=?")->execute([$room2, $created['id']]);
 db()->prepare("UPDATE class_sessions SET status='cancelled' WHERE id=?")->execute([$cancelled['id']]);
 $toUtc = static fn(string $local): string => (new DateTimeImmutable($local, new DateTimeZone('Asia/Bangkok')))->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');

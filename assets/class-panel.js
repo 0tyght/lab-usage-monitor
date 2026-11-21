@@ -23,22 +23,47 @@
     body.querySelectorAll('form').forEach((form)=>{form.action=location.pathname+location.search;});
     body.querySelectorAll('td').forEach((td,index)=>{const headings=[...td.closest('table').querySelectorAll('th')];td.dataset.label=headings[index%headings.length]?.textContent || '';});
     window.LUMS?.renderIcons(body);
-    q('[data-refresh-class]')?.addEventListener('click',()=>load(activeId));
+    q('[data-refresh-class]')?.addEventListener('click',()=>load(activeId,true));
   }
 
-  async function load(id) {
+  async function load(id, refreshing=false) {
+    if (refreshing && body.getAttribute('aria-busy')==='true') return;
     controller?.abort();const request=++serial;activeId=id;
-    body.replaceChildren();const loading=document.createElement('p');loading.setAttribute('role','status');loading.textContent='กำลังโหลดรายละเอียดคลาส…';body.append(loading);body.setAttribute('aria-busy','true');
+    if (refreshing) {
+      q('[data-roster-feedback]').textContent='กำลังอัปเดตรายชื่อ…';
+      q('[data-refresh-class]').setAttribute('aria-disabled','true');
+    } else {
+      body.replaceChildren();const loading=document.createElement('p');loading.setAttribute('role','status');loading.textContent='กำลังโหลดรายละเอียดคลาส…';body.append(loading);
+    }
+    body.setAttribute('aria-busy','true');
     controller=new AbortController();const currentController=controller;const timeout=setTimeout(()=>currentController.abort(),12000);
     try {
       const response=await fetch(`?fragment=class-panel&id=${encodeURIComponent(id)}`,{credentials:'same-origin',cache:'no-store',signal:controller.signal});
       const html=await response.text();if(request!==serial)return;
-      if(!response.ok)throw new Error(response.status===401?'หมดเวลาเข้าสู่ระบบ กรุณารีเฟรชหน้าและเข้าสู่ระบบอีกครั้ง':response.status===404?'ไม่พบคลาสหรือไม่มีสิทธิ์เข้าถึง':'โหลดไม่สำเร็จ กรุณาลองใหม่');
+      if(!response.ok){
+        const error=new Error(response.status===401?'หมดเวลาเข้าสู่ระบบ กรุณารีเฟรชหน้าและเข้าสู่ระบบอีกครั้ง':response.status===404?'ไม่พบคลาสหรือไม่มีสิทธิ์เข้าถึง':'โหลดไม่สำเร็จ กรุณาลองใหม่');
+        error.status=response.status;
+        throw error;
+      }
       // HTML comes only from the authorized same-origin, escaped PHP template.
-      body.innerHTML=html;enhance();dialog.querySelector('[data-close-class]').focus();
+      const scroll=body.scrollTop;
+      body.innerHTML=html;enhance();
+      if (refreshing) {
+        q('[data-roster-feedback]').textContent='อัปเดตรายชื่อแล้ว';
+        body.scrollTop=scroll;
+        q('[data-refresh-class]').focus({preventScroll:true});
+      } else {
+        dialog.querySelector('[data-close-class]').focus();
+      }
     } catch(error) {
       if(request!==serial)return;
-      body.replaceChildren();const note=document.createElement('p');note.setAttribute('role','alert');note.textContent=error.name==='AbortError'?'การเชื่อมต่อใช้เวลานาน กรุณาลองใหม่':error.message;body.append(note);
+      const message=error.name==='AbortError'?'การเชื่อมต่อใช้เวลานาน กรุณาลองใหม่':error.message;
+      if (refreshing && ![401,404].includes(error.status)) {
+        q('[data-roster-feedback]').textContent='ยังแสดงรายชื่อครั้งก่อน · '+message;
+        q('[data-refresh-class]').removeAttribute('aria-disabled');
+        return;
+      }
+      body.replaceChildren();const note=document.createElement('p');note.setAttribute('role','alert');note.textContent=message;body.append(note);
       const retry=document.createElement('button');retry.type='button';retry.className='button button--secondary';retry.textContent='ลองอีกครั้ง';retry.addEventListener('click',()=>load(id));body.append(retry);retry.focus();
     } finally {clearTimeout(timeout);if(request===serial)body.removeAttribute('aria-busy');}
   }

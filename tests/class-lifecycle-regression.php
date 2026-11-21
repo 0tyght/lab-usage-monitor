@@ -35,6 +35,7 @@ $expect($manual['display_status']==='overdue','Existing manual class is overdue 
 $expect($manual['starts_at']===$before['starts_at'] && $manual['ends_at']===$before['ends_at'] && $manual['qr_token']===$token,'Expired class retains its original times and QR');
 $expect(list_class_sessions(['q'=>'LIFE101','status'=>'open'])===[] && count(list_class_sessions(['q'=>'LIFE101','status'=>'overdue']))===1,'Filters classify expired manual class as overdue');
 $expect(dashboard_data()['active_total']===0 && dashboard_data()['rooms_in_use']===0 && dashboard_data()['issues_total']===1,'Dashboard excludes expired manual class from active');
+$expect(!close_class_session($id)['ok'] && class_checkin_status(get_class_session($id))==='overdue','A stale close button cannot overwrite an automatic end');
 $date=(new DateTimeImmutable($pastStart))->setTimezone(new DateTimeZone('Asia/Bangkok'))->format('Y-m-d');
 $report=usage_report(planning_filters(['date_from'=>$date,'date_to'=>$date,'q'=>'LIFE101','source'=>'classes'],true));
 $expect($report['events']===1 && !str_contains(usage_source_label($report['rows'][0]),'คลาสเปิดลงชื่อ'),'Calendar/report label agrees with expired admission');

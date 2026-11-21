@@ -156,6 +156,26 @@ db()->prepare("INSERT INTO users (full_name,email,role,password_hash,is_active,c
 $request('/?page=login',['action'=>'login','csrf_token'=>$csrf($otherLogin),'email'=>'other@example.invalid','password'=>'Test-Only-Other-2569']);
 [$status,$otherFragment]=$request('/?fragment=class-panel&id='.$onceClassId);
 $expect($status===404 && !str_contains($otherFragment,'data-class-qr'),'Another lecturer cannot retrieve this class QR or attendance');
+[, $emptyAgenda]=$request('/?page=dashboard');
+$expect(str_contains($emptyAgenda,'วันนี้คุณไม่มีคลาสตามตาราง') && !str_contains($emptyAgenda,'ONCEHTTP') && !str_contains($emptyAgenda,'metrics-grid'), 'Lecturer home has its own empty agenda and excludes other teachers');
+$lecturerId=(int)db()->query("SELECT id FROM users WHERE email='other@example.invalid'")->fetchColumn();
+$planToday=db()->prepare("INSERT INTO course_schedules(term_id,room_id,lecturer_user_id,course_code,course_name,day_of_week,starts_time,ends_time,active_from,active_until,created_at,updated_at) VALUES (?,?,?,'MYPLAN','แผนของฉัน',?,'10:00','12:00',?,?,?,?)");
+$planToday->execute([$termId,$roomId,$lecturerId,(int)date('N'),date('Y-m-d'),date('Y-m-d'),utc_now(),utc_now()]);
+[, $planAgenda]=$request('/?page=dashboard');
+$expect(str_contains($planAgenda,'แผนของฉัน') && str_contains($planAgenda,'ยังไม่ได้สร้างคลาส') && !str_contains($planAgenda,'วันนี้คุณไม่มีคลาสตามตาราง'), 'A teaching plan for today is visible before a class exists');
+db()->prepare("DELETE FROM course_schedules WHERE lecturer_user_id=? AND course_code='MYPLAN'")->execute([$lecturerId]);
+$agendaFixture=db()->prepare("INSERT INTO class_sessions (lecturer_user_id,room_id,course_code,course_name,starts_at,ends_at,status,qr_token,created_at,updated_at) VALUES (?,?,'MYAGENDA',?,?,?,?,?,?,?)");
+foreach ([['today','open','09:00'],['tomorrow','cancelled','08:00'],['tomorrow','open','10:00'],['tomorrow','open','13:00']] as [$day,$state,$clock]) {
+    $at=new DateTimeImmutable($day.' '.$clock);
+    $agendaFixture->execute([$lecturerId,$roomId,'รายการทดสอบ '.$day.$clock,gmdate('Y-m-d\TH:i:s\Z',$at->getTimestamp()),gmdate('Y-m-d\TH:i:s\Z',$at->getTimestamp()+3600),$state,bin2hex(random_bytes(16)),utc_now(),utc_now()]);
+}
+[, $agenda]=$request('/?page=dashboard');
+$expect(str_contains($agenda,'today09:00') && str_contains($agenda,'tomorrow10:00') && !str_contains($agenda,'tomorrow08:00') && !str_contains($agenda,'tomorrow13:00') && !str_contains($agenda,'ONCEHTTP'), 'Agenda lists own classes today and the first non-cancelled class after today');
+[, $lecturerReports]=$request('/?page=reports');
+$expect(str_contains($lecturerReports,'name="tab" value="attendance"') && !str_contains($lecturerReports,'การเข้าใช้นอกคลาส'), 'Lecturer reports start with attendance and describe only accessible reports');
+[, $legacyUsage]=$request('/?page=reports&date_from=2030-05-06&date_to=2030-05-06');
+$expect(str_contains($legacyUsage,'name="tab" value="usage"'), 'Existing filtered usage report links keep their meaning');
+db()->prepare("DELETE FROM class_sessions WHERE lecturer_user_id=? AND course_code='MYAGENDA'")->execute([$lecturerId]);
 $cookies=[];
 [$status] = $request('/?api=one-off-availability&date=2030-05-06&room_id='.$roomId);
 $expect($status===401,'Anonymous visitors cannot query booking availability');

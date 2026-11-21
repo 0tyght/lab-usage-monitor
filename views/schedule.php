@@ -4,7 +4,7 @@ $termErrors = $_SESSION['term_form_errors'] ?? [];
 $termInput = $_SESSION['term_old_input'] ?? [];
 if (!$termInput) $termInput = array_intersect_key($_GET, array_flip(['academic_year','semester']));
 unset($_SESSION['term_form_errors'], $_SESSION['term_old_input']);
-$defaultTerm = current_academic_term();
+$defaultTerm = $isLecturer ? null : current_academic_term();
 $term = isset($_GET['term_id']) && (int)$_GET['term_id']===0 ? null : (get_academic_term((int)($_GET['term_id'] ?? $defaultTerm['id'] ?? 0)) ?? $defaultTerm);
 $termId = (int)($term['id'] ?? 0);
 $rooms = list_rooms();
@@ -17,7 +17,7 @@ $search = trim((string)($_GET['q'] ?? ''));
 $weekDate = (string)($_GET['week'] ?? '');
 if (!valid_iso_date($weekDate) && $term && (date('Y-m-d') < $term['starts_on'] || date('Y-m-d') > $term['ends_on'])) $weekDate = $term['starts_on'];
 $weekStart = week_start_date($weekDate);
-$showWeekend = (string)($_GET['weekend'] ?? '') === '1';
+$showWeekend = isset($_GET['weekend']) ? $_GET['weekend']==='1' : ($isLecturer && (int)date('N')>=6 && $weekStart->format('Y-m-d')===week_start_date()->format('Y-m-d'));
 $dayCount = $showWeekend ? 7 : 5;
 $weekFrom = $weekStart->format('Y-m-d');
 $weekTo = $weekStart->modify('+'.($dayCount-1).' days')->format('Y-m-d');
@@ -26,7 +26,7 @@ $scheduleReturnUrl = '?'.http_build_query($scheduleQueryBase);
 $termReturnUrl = $scheduleReturnUrl;
 $termOpenUrl = $termReturnUrl.'&new_term=1';
 $selectedSchedule = get_course_schedule((int)($_GET['selected'] ?? 0));
-if ($selectedSchedule && ($selectedSchedule['term_id'] !== $termId || $selectedSchedule['status'] !== 'active')) $selectedSchedule = null;
+if ($selectedSchedule && (($termId && $selectedSchedule['term_id'] !== $termId) || $selectedSchedule['status'] !== 'active')) $selectedSchedule = null;
 $selectedDate = $selectedSchedule ? $weekStart->modify('+'.($selectedSchedule['day_of_week']-1).' days')->format('Y-m-d') : '';
 $loadError = false;
 $events = [];
@@ -39,7 +39,7 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
 ?>
 <section class="schedule-page" aria-labelledby="schedule-page-title">
     <header class="page-header schedule-page-header">
-        <div><h1 id="schedule-page-title">ตารางเรียนห้องปฏิบัติการ</h1><p>เลือกช่วงเวลาเพื่อสร้างคลาสเรียนแบบครั้งเดียวหรือทั้งภาคเรียน</p></div>
+        <div><h1 id="schedule-page-title"><?= $isLecturer?'ตารางสอนของฉัน':'ตารางเรียนห้องปฏิบัติการ' ?></h1><p><?= $isLecturer?'แสดงวิชาที่คุณสอน เลือกช่วงเวลาเพื่อจองห้อง ระบบจะตรวจเวลาซ้ำกับคลาสอื่นก่อนบันทึก':'เลือกช่วงเวลาเพื่อสร้างคลาสเรียนแบบครั้งเดียวหรือทั้งภาคเรียน' ?></p></div>
         <div class="schedule-header-actions">
             <a class="button button--primary" href="<?= e($oneOffOpenUrl) ?>" data-open-once aria-haspopup="dialog" aria-controls="one-off-dialog"><span data-icon="plus"></span>สร้างคลาสเรียน</a>
         </div>
@@ -51,9 +51,9 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
             <label class="field"><span>ค้นหาตาราง</span><input name="q" value="<?= e($search) ?>" placeholder="รหัสวิชา ชื่อวิชา หรือผู้สอน"></label>
             <button type="submit" class="button button--secondary">แสดงตาราง</button>
         </form>
-        <div class="schedule-term-line"><p><?php if ($term): ?><strong><?= e($term['name']) ?></strong> · <?= e(thai_date_label($term['starts_on']).' – '.thai_date_label($term['ends_on'])) ?><?php else: ?>เลือกภาคเรียนได้ขณะสร้างคลาส ไม่ต้องเพิ่มภาคการศึกษาแยก<?php endif; ?></p>
+        <?php if ($term || !$isLecturer): ?><div class="schedule-term-line"><?php if ($term): ?><p><strong><?= e($term['name']) ?></strong> · <?= e(thai_date_label($term['starts_on']).' – '.thai_date_label($term['ends_on'])) ?></p><?php endif; ?>
             <?php if ($user['role']==='admin'): ?><a href="<?= e($scheduleReturnUrl.'&import=1') ?>" data-open-schedule="schedule-import" aria-haspopup="dialog">นำเข้าตารางจาก CSV</a><?php endif; ?>
-        </div>
+        </div><?php endif; ?>
         <div class="schedule-toolbar" aria-label="เปลี่ยนสัปดาห์">
             <div class="schedule-week-nav"><div class="button-group"><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>$weekStart->modify('-7 days')->format('Y-m-d')]))) ?>" aria-label="สัปดาห์ก่อน"><span data-icon="chevron-left"></span></a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>week_start_date()->format('Y-m-d')]))) ?>">สัปดาห์นี้</a><a class="button button--secondary" href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['week'=>$weekStart->modify('+7 days')->format('Y-m-d')]))) ?>" aria-label="สัปดาห์ถัดไป"><span data-icon="chevron-right"></span></a></div><h2><?= e(thai_date_label($weekFrom).' – '.thai_date_label($weekTo)) ?></h2></div>
             <div class="segmented" aria-label="จำนวนวันที่แสดง"><?php foreach ([0=>'จ.–ศ.',1=>'7 วัน'] as $weekend=>$label): ?><a href="?<?= e(http_build_query(array_replace($scheduleQueryBase,['weekend'=>$weekend]))) ?>" class="<?= (int)$showWeekend===$weekend ? 'is-active' : '' ?>" <?= (int)$showWeekend===$weekend ? 'aria-current="page"' : '' ?>><?= e($label) ?></a><?php endforeach; ?></div>
@@ -83,9 +83,9 @@ $outsideTerm = $term && ($weekTo < $term['starts_on'] || $weekFrom > $term['ends
                 </div>
             <?php endif; ?>
             <div class="schedule-selection-bar" data-schedule-selection-bar hidden><div><strong data-selection-summary></strong><span data-selection-hint></span></div><button type="button" class="button button--ghost" data-clear-schedule-range>ล้างช่วงเวลา</button><button type="button" class="button button--primary" data-use-schedule-range>ใช้ช่วงเวลานี้</button></div>
-            <p class="schedule-footer-note">ช่องว่างยังไม่ยืนยันว่าจองได้ ระบบตรวจห้องและผู้สอนตลอดช่วงที่ใช้ตารางก่อนบันทึก<?= $user['role']==='lecturer' ? ' · แสดงเฉพาะรายการของคุณ' : '' ?></p>
+            <?php if (!$isLecturer): ?><p class="schedule-footer-note">ระบบตรวจเวลาซ้ำของห้องและผู้สอนก่อนบันทึก</p><?php endif; ?>
         </section>
         <?php require __DIR__.'/schedule-dialogs.php'; ?>
-    <details class="schedule-once-details"><summary>คลาสเรียนแบบครั้งเดียวในสัปดาห์นี้ <span>ดูรายการและ QR</span></summary><?php require __DIR__.'/one-off-week.php'; ?></details>
+    <details class="schedule-once-details"><summary>คลาสเรียนแบบครั้งเดียวในสัปดาห์นี้</summary><?php require __DIR__.'/one-off-week.php'; ?></details>
 </section>
 <script src="<?= e(asset_url('timetable.js')) ?>" defer></script>

@@ -715,21 +715,25 @@ function create_session_from_schedule(int $scheduleId, string $date): array
     if ($day !== $schedule['day_of_week'] || $date < $schedule['active_from'] || $date > $schedule['active_until']) return ['ok'=>false, 'message'=>'วันที่นี้ไม่ตรงกับตารางเรียน'];
     $existing = db()->prepare('SELECT id FROM class_sessions WHERE schedule_id=:schedule_id AND scheduled_date=:date LIMIT 1');
     $existing->execute([':schedule_id'=>$scheduleId, ':date'=>$date]);
-    if (($id = $existing->fetchColumn()) !== false) return ['ok'=>true, 'id'=>(int)$id, 'existing'=>true, 'message'=>'มี QR สำหรับคลาสเรียนนี้แล้ว'];
+    if (($id = $existing->fetchColumn()) !== false) return ['ok'=>true, 'id'=>(int)$id, 'existing'=>true, 'message'=>'เปิดรายละเอียดคลาสที่สร้างไว้แล้ว'];
     $startsAt = local_datetime_to_utc($date . 'T' . $schedule['starts_time']);
     $endsAt = local_datetime_to_utc($date . 'T' . $schedule['ends_time']);
     if (!$startsAt || !$endsAt) return ['ok'=>false, 'message'=>'ไม่สามารถคำนวณเวลาเรียนได้'];
-    $nowTs = time();
-    $status = $nowTs >= strtotime($startsAt) - 1800 && $nowTs < strtotime($endsAt) ? 'open' : 'draft';
     $now = utc_now();
-    $insert = db()->prepare("INSERT INTO class_sessions (room_id, lecturer_user_id, course_code, course_name, section, starts_at, ends_at, status, qr_token, notes, schedule_id, scheduled_date, created_at, updated_at) VALUES (:room_id,:lecturer_id,:course_code,:course_name,:section,:starts_at,:ends_at,:status,:qr_token,:notes,:schedule_id,:scheduled_date,:created_at,:updated_at)");
-    $insert->execute([
-        ':room_id'=>$schedule['room_id'], ':lecturer_id'=>$schedule['lecturer_user_id'], ':course_code'=>$schedule['course_code'], ':course_name'=>$schedule['course_name'], ':section'=>$schedule['section'],
-        ':starts_at'=>$startsAt, ':ends_at'=>$endsAt, ':status'=>$status, ':qr_token'=>bin2hex(random_bytes(16)), ':notes'=>$schedule['notes'], ':schedule_id'=>$scheduleId, ':scheduled_date'=>$date, ':created_at'=>$now, ':updated_at'=>$now,
-    ]);
+    $insert = db()->prepare("INSERT INTO class_sessions (room_id, lecturer_user_id, course_code, course_name, section, starts_at, ends_at, status, checkin_mode, admission_lead_minutes, qr_token, notes, schedule_id, scheduled_date, created_at, updated_at) VALUES (:room_id,:lecturer_id,:course_code,:course_name,:section,:starts_at,:ends_at,'open','scheduled',10,:qr_token,:notes,:schedule_id,:scheduled_date,:created_at,:updated_at)");
+    try {
+        $insert->execute([
+            ':room_id'=>$schedule['room_id'], ':lecturer_id'=>$schedule['lecturer_user_id'], ':course_code'=>$schedule['course_code'], ':course_name'=>$schedule['course_name'], ':section'=>$schedule['section'],
+            ':starts_at'=>$startsAt, ':ends_at'=>$endsAt, ':qr_token'=>bin2hex(random_bytes(16)), ':notes'=>$schedule['notes'], ':schedule_id'=>$scheduleId, ':scheduled_date'=>$date, ':created_at'=>$now, ':updated_at'=>$now,
+        ]);
+    } catch (PDOException $error) {
+        $existing->execute([':schedule_id'=>$scheduleId, ':date'=>$date]);
+        if (($id = $existing->fetchColumn()) !== false) return ['ok'=>true,'id'=>(int)$id,'existing'=>true,'message'=>'เปิดรายละเอียดคลาสที่สร้างไว้แล้ว'];
+        throw $error;
+    }
     $id = (int)db()->lastInsertId();
     audit_log('class_created_from_schedule', 'class_session', $id, ['schedule_id'=>$scheduleId, 'scheduled_date'=>$date], (int)$user['id']);
-    return ['ok'=>true, 'id'=>$id, 'status'=>$status, 'message'=>$status === 'open' ? 'สร้าง QR และเปิดรับลงชื่อแล้ว' : 'เตรียม QR สำหรับคลาสเรียนนี้แล้ว'];
+    return ['ok'=>true, 'id'=>$id, 'status'=>'open', 'message'=>'นิสิตลงชื่อผ่าน QR ประจำห้องได้ตั้งแต่ 10 นาทีก่อนเรียนจนถึงเวลาเลิกคลาส'];
 }
 
 /** Attendance policy is independent of room reservation time. */
@@ -969,8 +973,10 @@ function close_class_session(int $id): array
     if ($session['status'] === 'closed') return ['ok' => true, 'message' => 'คลาสนี้ปิดรับแล้ว'];
     if ($session['status'] === 'cancelled') return ['ok'=>false,'message'=>'คลาสนี้ถูกยกเลิกแล้ว'];
 
-    $statement = db()->prepare("UPDATE class_sessions SET status = 'closed', updated_at = :updated_at WHERE id = :id AND status IN ('draft','open')");
-    $statement->execute([':updated_at' => utc_now(), ':id' => $id]);
+    $now = utc_now();
+    $statement = db()->prepare("UPDATE class_sessions SET status = 'closed', updated_at = :updated_at WHERE id = :id AND status IN ('draft','open') AND ends_at > :now");
+    $statement->execute([':updated_at'=>$now, ':id'=>$id, ':now'=>$now]);
+    if ($statement->rowCount() !== 1) return ['ok'=>false, 'message'=>'คลาสสิ้นสุดแล้วหรือสถานะเปลี่ยนไป กรุณาตรวจสถานะล่าสุด'];
     audit_log('class_closed', 'class_session', $id, [], (int) $user['id']);
 
     return ['ok' => true, 'message' => 'ปิดรับการลงชื่อเข้าเรียนแล้ว'];
@@ -1202,6 +1208,25 @@ function usage_rows(string $where = '', array $params = [], int $limit = 50, int
     }
 
     return $rows;
+}
+
+function lecturer_agenda(): array
+{
+    $lecturerId = (int)current_user()['id'];
+    [$start, $end] = local_period_bounds('day');
+    $select = class_session_select_sql().' WHERE cs.lecturer_user_id = :lecturer';
+    $order = ' GROUP BY cs.id, r.id, u.id ORDER BY cs.starts_at, cs.id';
+    $today = db()->prepare($select.' AND cs.starts_at < :end AND cs.ends_at > :start'.$order);
+    $today->execute([':lecturer'=>$lecturerId, ':start'=>$start, ':end'=>$end]);
+    $next = db()->prepare($select." AND cs.starts_at >= :end AND cs.status <> 'cancelled'".$order.' LIMIT 1');
+    $next->execute([':lecturer'=>$lecturerId, ':end'=>$end]);
+    $later = $next->fetch();
+    $lessons = array_map('normalize_class_session', $today->fetchAll());
+    $date = date('Y-m-d');
+    $plans = room_usage_events($date, $date, ['source'=>'schedule']);
+    $lessons = array_merge($lessons, $plans);
+    usort($lessons, static fn(array $a, array $b): int => [$a['starts_at'],$a['room_code']] <=> [$b['starts_at'],$b['room_code']]);
+    return ['today'=>$lessons, 'next'=>$later ? normalize_class_session($later) : null];
 }
 
 function dashboard_data(): array

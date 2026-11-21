@@ -28,8 +28,11 @@ $session=$classes[0]; $start=strtotime($session['starts_at']); $end=strtotime($s
 $expect(class_checkin_status($session,$start-601)==='scheduled','One second before admission window stays closed');
 $expect(class_checkin_status($session,$start-600)==='open','Exact ten-minute boundary opens');
 $expect(class_checkin_status($session,$end-1)==='open' && class_checkin_status($session,$end)==='overdue','Exact lesson end stops automatic admission');
-close_class_session($session['id']); $closed=get_class_session($session['id']);
-$expect(class_checkin_status($closed,$start)==='closed','Owner closure wins over automatic opening');
+// Use a live admission window regardless of the date the catalog fixture is tested.
+db()->beginTransaction();
+db()->prepare('UPDATE class_sessions SET starts_at=?,ends_at=? WHERE id=?')->execute([gmdate('Y-m-d\TH:i:s\Z',time()-300),gmdate('Y-m-d\TH:i:s\Z',time()+3600),$session['id']]);
+$expect(close_class_session($session['id'])['ok'] && class_checkin_status(get_class_session($session['id']))==='closed','Owner closure wins over automatic opening');
+db()->rollBack();
 $events=room_usage_events('2026-11-16','2027-03-21',['q'=>'BATCH101']);
 $expect(count($events)===36 && count(array_unique(array_column($events,'key')))===36,'Calendar has one event per lesson, no duplicate reservation layer');
 $expect(count(room_usage_events('2027-03-15','2027-03-21',['q'=>'BATCH101']))===2,'Final teaching week is materialized too');

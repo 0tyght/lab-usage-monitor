@@ -18,7 +18,7 @@ $changeValues=array_replace(['scope'=>'once','operation'=>'edit','room_id'=>$edi
                 <label class="field"><span>ต้องการทำอะไร</span><select name="operation"><option value="edit">แก้ไขคลาส</option><option value="cancel" <?= $changeValues['operation']==='cancel'?'selected':'' ?>>ยกเลิกคลาส</option></select></label>
                 <label class="field"><span>ขอบเขตการเปลี่ยนแปลง</span><select name="scope"><option value="once">เฉพาะครั้งนี้</option><?php if ($editClass['series_key']): ?><option value="following" <?= $changeValues['scope']==='following'?'selected':'' ?>>ครั้งนี้และครั้งถัดไปในชุด</option><option value="all" <?= $changeValues['scope']==='all'?'selected':'' ?>>ทั้งชุดที่สร้างพร้อมกัน</option><?php endif; ?></select></label>
             </div>
-            <p class="helper-text">คลาสที่เริ่มแล้วหรือมีผู้ลงชื่อจะไม่เปลี่ยนย้อนหลัง การยกเลิกไม่ลบคลาสหรือรายชื่อเดิม และ QR ของคลาสที่ยกเลิกจะหยุดรับลงชื่อ</p>
+            <p class="helper-text">แก้ไขหรือยกเลิกได้เฉพาะครั้งที่ยังไม่เริ่มและยังไม่มีผู้ลงชื่อ</p>
             <div data-change-fields>
                 <div class="form-grid">
                     <label class="field"><span>วันที่เรียน</span><input type="date" name="class_date" value="<?= e($changeValues['class_date']) ?>" data-original-date="<?= e(date('Y-m-d',strtotime($editClass['starts_at']))) ?>" required></label>
