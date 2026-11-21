@@ -45,12 +45,17 @@ function active_room_user_counts(): array
         WHERE ar.check_out_at IS NULL AND ar.checkout_deadline_at IS NOT NULL
           AND ar.checkout_deadline_at > :class_now AND ar.check_in_at <= :class_start
         UNION
+        SELECT cs.room_id, UPPER(TRIM(ar.student_code)) AS person_code
+        FROM attendance_return_visits av JOIN attendance_records ar ON ar.id=av.attendance_id
+        JOIN class_sessions cs ON cs.id=ar.class_session_id
+        WHERE av.check_out_at IS NULL AND av.checkout_deadline_at > :return_now AND av.check_in_at <= :return_start
+        UNION
         SELECT rv.room_id, UPPER(TRIM(rv.person_code)) AS person_code
         FROM room_visits rv
         WHERE rv.check_out_at IS NULL AND rv.planned_end_at IS NOT NULL
           AND rv.planned_end_at > :visit_now AND rv.check_in_at <= :visit_start
     ) active_people GROUP BY room_id");
-    $query->execute([':class_now'=>$now, ':class_start'=>$now, ':visit_now'=>$now, ':visit_start'=>$now]);
+    $query->execute([':class_now'=>$now, ':class_start'=>$now, ':return_now'=>$now, ':return_start'=>$now, ':visit_now'=>$now, ':visit_start'=>$now]);
     return $query->fetchAll(PDO::FETCH_KEY_PAIR);
 }
 
@@ -974,7 +979,11 @@ function close_class_session(int $id): array
 function class_attendance(int $classSessionId): array
 {
     close_expired_room_usage(db());
-    $statement = db()->prepare('SELECT id, student_code, student_name, check_in_at, check_out_at, checkout_method FROM attendance_records WHERE class_session_id = :class_id ORDER BY check_in_at DESC, id DESC');
+    $statement = db()->prepare("SELECT * FROM (
+        SELECT id,student_code,student_name,check_in_at,check_out_at,checkout_method,checkout_deadline_at,class_session_id FROM attendance_records
+        UNION ALL
+        SELECT ar.id,ar.student_code,ar.student_name,av.check_in_at,av.check_out_at,av.checkout_method,av.checkout_deadline_at,ar.class_session_id FROM attendance_return_visits av JOIN attendance_records ar ON ar.id=av.attendance_id
+    ) WHERE class_session_id = :class_id ORDER BY check_in_at DESC, id DESC");
     $statement->execute([':class_id' => $classSessionId]);
     $rows = $statement->fetchAll();
     foreach ($rows as &$row) $row['id'] = (int) $row['id'];
@@ -1012,7 +1021,11 @@ function list_attendance_records(array $filters = [], bool $all = false, int $pa
         }
     }
     $whereSql = $where ? ' WHERE ' . implode(' AND ', $where) : '';
-    $from = "FROM attendance_records ar
+    $from = "FROM (
+            SELECT id,class_session_id,student_code,student_name,check_in_at,check_out_at,checkout_method,checkout_deadline_at,0 AS return_id FROM attendance_records
+            UNION ALL
+            SELECT ar.id,ar.class_session_id,ar.student_code,ar.student_name,av.check_in_at,av.check_out_at,av.checkout_method,av.checkout_deadline_at,av.id AS return_id FROM attendance_return_visits av JOIN attendance_records ar ON ar.id=av.attendance_id
+            ) ar
             JOIN class_sessions cs ON cs.id = ar.class_session_id
             JOIN rooms r ON r.id = cs.room_id
             JOIN users u ON u.id = cs.lecturer_user_id
@@ -1023,10 +1036,10 @@ function list_attendance_records(array $filters = [], bool $all = false, int $pa
     $pages = max(1, (int)ceil($total / 200));
     $page = min($pages, max(1, $page));
     $limit = $all ? '' : ' LIMIT 200 OFFSET '.(($page-1)*200);
-    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at, ar.check_out_at, ar.checkout_method,
+    $sql = "SELECT ar.id, ar.student_code, ar.student_name, ar.check_in_at, ar.check_out_at, ar.checkout_method, ar.checkout_deadline_at,
                    cs.id AS class_id, cs.course_code, cs.course_name, cs.section,
                    r.code AS room_code, r.name AS room_name, u.full_name AS lecturer_name
-            {$from} ORDER BY ar.check_in_at DESC, ar.id DESC{$limit}";
+            {$from} ORDER BY ar.check_in_at DESC, ar.id DESC, ar.return_id DESC{$limit}";
     $statement = db()->prepare($sql);
     $statement->execute($params);
     $items = $statement->fetchAll();
@@ -1076,7 +1089,7 @@ function attendance_report_table(array $items): array
     foreach ($items as $item) {
         $time = (new DateTimeImmutable($item['check_in_at']))->setTimezone($timezone)->format('d/m/Y H:i');
         $out = !empty($item['check_out_at']) ? (new DateTimeImmutable($item['check_out_at']))->setTimezone($timezone)->format('d/m/Y H:i') : '';
-        $status = ($item['checkout_method'] ?? '') === 'timeout' ? 'Time out (เวลาสิ้นสุดคลาส)' : (($item['checkout_method'] ?? '') === 'self' ? 'ผู้ใช้ยืนยันออก' : 'ไม่มีข้อมูลเวลาออก');
+        $status = ($item['checkout_method'] ?? '') === 'timeout' ? 'Time out (เวลาสิ้นสุดคลาส)' : (($item['checkout_method'] ?? '') === 'self' ? 'ผู้ใช้ยืนยันออก' : (!empty($item['checkout_deadline_at']) && empty($item['check_out_at']) ? 'กำลังใช้งาน' : 'ไม่มีข้อมูลเวลาออก'));
         $rows[] = [$time, $out, $status, $item['student_code'], $item['student_name'], $item['course_code'], $item['course_name'], $item['section'] ?? '', $item['room_code'], $item['lecturer_name']];
     }
     return ['headers' => $headers, 'rows' => $rows];
@@ -1110,12 +1123,26 @@ function register_student_attendance(string $token, array $input): array
             $message=match($state) {'scheduled','draft'=>'คลาสนี้ยังไม่เปิดให้ลงชื่อ','overdue'=>'คลาสสิ้นสุดแล้ว ไม่สามารถลงชื่อย้อนหลังได้',default=>'คลาสนี้ปิดรับการลงชื่อแล้ว'};
             return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
         }
-        $existing=$connection->prepare('SELECT id,check_out_at FROM attendance_records WHERE class_session_id=? AND student_code=?');
+        $existing=$connection->prepare('SELECT id,check_out_at,client_request_id,check_in_at FROM attendance_records WHERE class_session_id=? AND student_code=?');
         $existing->execute([$session['id'],$studentCode]);
         if ($prior=$existing->fetch()) {
             if ($prior['check_out_at']!==null) {
-                $message='รหัสนี้บันทึกออกจากคลาสแล้ว ระบบยังไม่รองรับการเข้าอีกครั้งในคลาสเดิม กรุณาติดต่อผู้ดูแล';
-                return ['ok'=>false,'message'=>$message,'errors'=>['form'=>$message]];
+                if ($prior['client_request_id']===$requestId) return ['ok'=>true,'id'=>(int)$prior['id'],'check_in_at'=>$prior['check_in_at'],'duplicate'=>true,'message'=>'คำขอนี้บันทึกไว้แล้ว'];
+                $old=$connection->prepare('SELECT id,check_in_at FROM attendance_return_visits WHERE client_request_id=? AND attendance_id=?');
+                $old->execute([$requestId,(int)$prior['id']]);
+                if ($repeat=$old->fetch()) return ['ok'=>true,'id'=>(int)$prior['id'],'check_in_at'=>$repeat['check_in_at'],'duplicate'=>true,'message'=>'คำขอนี้บันทึกไว้แล้ว'];
+                $used=$connection->prepare('SELECT 1 FROM attendance_records WHERE client_request_id=?');
+                $used->execute([$requestId]);
+                if ($used->fetchColumn()) return ['ok'=>false,'message'=>'คำขอนี้ถูกใช้แล้ว กรุณาเปิดหน้าใหม่แล้วลองอีกครั้ง'];
+                $active=$connection->prepare('SELECT id,check_in_at FROM attendance_return_visits WHERE attendance_id=? AND check_out_at IS NULL');
+                $active->execute([(int)$prior['id']]);
+                if ($row=$active->fetch()) return ['ok'=>true,'id'=>(int)$prior['id'],'check_in_at'=>$row['check_in_at'],'duplicate'=>true,'message'=>'รหัสนี้กำลังใช้งานห้องอยู่'];
+                $now=utc_now();
+                $insert=$connection->prepare('INSERT INTO attendance_return_visits(attendance_id,check_in_at,checkout_deadline_at,client_request_id,created_at) VALUES (?,?,?,?,?)');
+                $insert->execute([(int)$prior['id'],$now,$session['ends_at'],$requestId,$now]);
+                audit_log('attendance_return_created','attendance_record',(int)$prior['id'],['class_session_id'=>(int)$session['id']],null);
+                if ($ownsTransaction) $connection->commit();
+                return ['ok'=>true,'id'=>(int)$prior['id'],'check_in_at'=>$now,'duplicate'=>false,'message'=>'บันทึกการเข้าใช้ห้องอีกครั้งแล้ว'];
             }
             return ['ok'=>true,'id'=>(int)$prior['id'],'duplicate'=>true,'message'=>'รหัสนักศึกษานี้ลงชื่อในคลาสแล้ว'];
         }

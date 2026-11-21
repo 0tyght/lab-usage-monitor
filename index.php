@@ -372,7 +372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($result['ok']) {
             $saved=db()->prepare('SELECT check_in_at FROM attendance_records WHERE id=?');
             $saved->execute([(int)$result['id']]);
-            $_SESSION['room_class_success']=['token'=>$roomToken,'class'=>$matches[0]['course_name'],'code'=>strtoupper(trim((string)($_POST['student_code'] ?? ''))),'at'=>$saved->fetchColumn() ?: utc_now(),'duplicate'=>(bool)($result['duplicate'] ?? false)];
+            $_SESSION['room_class_success']=['token'=>$roomToken,'class'=>$matches[0]['course_name'],'code'=>strtoupper(trim((string)($_POST['student_code'] ?? ''))),'at'=>$result['check_in_at'] ?? ($saved->fetchColumn() ?: utc_now()),'duplicate'=>(bool)($result['duplicate'] ?? false)];
         }
         set_flash($result['ok']?'success':'error',$result['ok']?'บันทึกการเข้าใช้แล้ว':'ยังบันทึกไม่ได้',$result['ok'] ? (($result['duplicate'] ?? false) ? 'รหัสนี้ลงชื่อในคลาสแล้ว' : 'สแกน QR ห้องอีกครั้งเมื่อออกจากห้อง หากไม่ได้สแกนออก ระบบบันทึก Time out เมื่อคลาสสิ้นสุด') : (!empty($result['errors']) ? implode(' ',array_values($result['errors'])) : ($result['message'] ?? 'กรุณาลองอีกครั้ง')));
         if (!$result['ok']) $_SESSION['room_class_input']=['student_code'=>$_POST['student_code'] ?? '', 'student_name'=>$_POST['student_name'] ?? ''];
@@ -956,7 +956,7 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
             <thead><tr><th>เวลาลงชื่อ</th><th>เวลาออก / สถานะ</th><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
             <tbody><?php foreach ($items as $item): ?><tr>
                 <td data-label="เวลาลงชื่อ"><strong><?= e(thai_datetime($item['check_in_at'])) ?></strong><small>ผ่าน QR Code</small></td>
-                <td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':'ยังไม่มีข้อมูลเวลาออก') ?></small></td>
+                <td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':(!empty($item['checkout_deadline_at']) && empty($item['check_out_at'])?'กำลังใช้งาน':'ยังไม่มีข้อมูลเวลาออก')) ?></small></td>
                 <td data-label="รหัสนักศึกษา"><strong><?= e($item['student_code']) ?></strong></td>
                 <td data-label="ชื่อ–นามสกุล"><?= e($item['student_name']) ?></td>
                 <?php if ($showClass): ?><td data-label="รายวิชา"><a class="text-link" data-class-id="<?= (int)$item['class_id'] ?>" href="?page=classes&amp;class_id=<?= e($item['class_id']) ?>"><?= e($item['course_code']) ?></a><small><?= e($item['course_name']) ?></small></td><td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td><?php endif; ?>

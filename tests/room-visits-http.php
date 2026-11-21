@@ -47,6 +47,7 @@ $csrf = static function (string $body): string {
 };
 
 require dirname(__DIR__).'/src/bootstrap.php';
+start_lums_session();
 $token=bin2hex(random_bytes(16));$now=utc_now();$code='HTTP-QR-'.substr($token,0,6);
 db()->prepare("INSERT INTO rooms(code,name,building,floor,capacity,status,qr_token,created_at,updated_at) VALUES (?,'ห้องทดสอบ HTTP','อาคารทดสอบ','1',5,'available',?,?,?)")->execute([$code,$token,$now,$now]);$room=(int)db()->lastInsertId();
 $url='/?page=room-checkin&token='.$token;
@@ -108,7 +109,22 @@ $expect(db()->query("SELECT checkout_method FROM attendance_records WHERE class_
 [, $reentryPage]=$request($url);
 $request($url,array_replace($classInput,['csrf_token'=>$csrf($reentryPage),'client_request_id'=>'http-room-reentry-001']));
 [, $reentryResult]=$request($url);
-$expect(str_contains($reentryResult,'ยังไม่รองรับการเข้าอีกครั้ง') && !str_contains($reentryResult,'ลงชื่อเข้าเรียนเรียบร้อย'),'Re-entry after checkout is not falsely reported as a successful new entry');
+$expect(str_contains($reentryResult,'ลงชื่อเข้าเรียนเรียบร้อย') && (int)db()->query('SELECT COUNT(*) FROM attendance_return_visits')->fetchColumn()===1,'Re-entry creates a separate usage interval');
+$returnRows=find_active_checkout($token,'HTTPCLASS01');
+$expect(count($returnRows)===1 && $returnRows[0]['kind']==='return','Re-entry is recognized as currently in the room');
+$expect((int)(active_room_user_counts()[$room] ?? 0)===1,'A re-entered user is counted in the live room total');
+[, $reentryExit]=$request($url.'&mode=exit');
+$request($url,['action'=>'room_checkout_direct','token'=>$token,'csrf_token'=>$csrf($reentryExit),'person_code'=>'HTTPCLASS01']);
+$expect(db()->query('SELECT checkout_method FROM attendance_return_visits')->fetchColumn()==='self','Re-entered user can check out normally');
+$reportItems=list_attendance_records(['q'=>'HTTPCLASS01'],true)['items'];
+$expect(count($reportItems)===2,'Attendance reports retain both entry and return intervals');
+$cookies=[];[, $adminLogin]=$request('/?page=login');
+$request('/?page=login',['action'=>'login','csrf_token'=>$csrf($adminLogin),'email'=>'admin@example.invalid','password'=>getenv('LUMS_ADMIN_PASSWORD')]);
+$reportQuery=['q'=>'HTTPCLASS01','date_from'=>date('Y-m-d'),'date_to'=>date('Y-m-d')];
+[, $classCsv]=$request('/?'.http_build_query(['download'=>'attendance-csv']+$reportQuery));
+[, $classPrint]=$request('/?'.http_build_query(['page'=>'reports','tab'=>'attendance','print'=>1]+$reportQuery));
+$expect(substr_count($classCsv,'HTTPCLASS01')>=2 && substr_count($classPrint,'HTTPCLASS01')>=2,'Attendance CSV and print include both entry intervals');
+$cookies=[];
 $otherToken=bin2hex(random_bytes(16));
 db()->prepare("INSERT INTO class_sessions(room_id,lecturer_user_id,course_code,course_name,starts_at,ends_at,status,checkin_mode,admission_lead_minutes,qr_token,created_at,updated_at) VALUES (?,?,'HTTP-SECOND','คลาสทดสอบที่สอง',?,?,'open','scheduled',10,?,?,?)")->execute([$room,$admin,$start,$end,$otherToken,$now,$now]);
 $otherClass=(int)db()->lastInsertId();

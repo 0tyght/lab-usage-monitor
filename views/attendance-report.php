@@ -20,7 +20,7 @@ foreach ($attendanceRooms as $room) if ($room['id'] === $attendanceFilters['room
 <p class="inline-note" role="status" data-report-pending hidden>เปลี่ยนตัวกรองแล้ว กรุณากด “แสดงรายงาน” ก่อนส่งออก ข้อมูลด้านล่างยังเป็นผลลัพธ์ครั้งก่อน</p>
 <?php if ($attendanceFilters['errors']): ?><div class="alert alert--error" role="alert"><?= e(implode(' ', $attendanceFilters['errors'])) ?></div><?php else: ?>
 <div class="report-applied-filters"><h2><?= e(thai_date_label($attendanceFilters['date_from']).' – '.thai_date_label($attendanceFilters['date_to'])) ?></h2><p><?= e($attendanceRoomLabel) ?> · เวลาไทย (UTC+7)<?= $attendanceFilters['q']!==''?' · คำค้น: '.e($attendanceFilters['q']):'' ?></p></div>
-<div class="report-summary"><span><strong><?= e($attendanceResult['total']) ?></strong>รายการลงชื่อ</span></div>
+<div class="report-summary"><span><strong><?= e($attendanceResult['total']) ?></strong>รอบเข้าใช้</span></div>
 <?php if ($attendancePrinting): ?><div class="print-actions"><button class="button button--primary" type="button" data-print-report>พิมพ์ / บันทึกเป็น PDF</button><p>เลือก “บันทึกเป็น PDF” ในหน้าต่างพิมพ์ของเบราว์เซอร์</p></div><?php endif; ?>
 <div class="section-heading"><div><h2>รายละเอียดการลงชื่อ</h2><p>เรียงจากเวลาล่าสุด · <?= $attendancePrinting ? 'ฉบับพิมพ์แสดงทุกรายการ' : 'แสดงสูงสุด 200 รายการต่อหน้า' ?></p></div><span class="result-count">พบ <?= e($attendanceResult['total']) ?> รายการ</span></div>
 <?php render_attendance_table($attendanceResult['items'], true, true); ?>

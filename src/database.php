@@ -187,6 +187,19 @@ CREATE TABLE IF NOT EXISTS attendance_records (
     UNIQUE (class_session_id, student_code)
 );
 
+CREATE TABLE IF NOT EXISTS attendance_return_visits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    attendance_id INTEGER NOT NULL REFERENCES attendance_records(id) ON DELETE CASCADE,
+    check_in_at TEXT NOT NULL,
+    check_out_at TEXT NULL,
+    checkout_method TEXT NULL CHECK (checkout_method IN ('self','timeout')),
+    checkout_deadline_at TEXT NOT NULL,
+    client_request_id TEXT NOT NULL UNIQUE,
+    created_at TEXT NOT NULL
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_attendance_return_active ON attendance_return_visits(attendance_id) WHERE check_out_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_attendance_return_time ON attendance_return_visits(check_in_at DESC);
+
 CREATE TABLE IF NOT EXISTS usage_records (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     room_id INTEGER NOT NULL,
