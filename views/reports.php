@@ -14,7 +14,7 @@ $pageCount = max(1, (int)ceil(count($reportTable['rows'])/50));
 $pageNumber = min($pageNumber, $pageCount);
 $visibleRows = isset($_GET['print']) ? $reportTable['rows'] : array_slice($reportTable['rows'], ($pageNumber-1)*50, 50);
 ?>
-<section class="usage-report">
+<section class="usage-report usage-report--schedule">
 <header class="section-heading report-section-heading"><div><h2>การใช้ห้องตามคลาส</h2><p>เวลาตามตารางคลาส ไม่ใช่เวลาที่ผู้ใช้ยืนยันเข้า–ออก · เลือกวันที่ ห้อง และช่วงเวลาเพื่อสรุป</p></div><?php if (!$report['errors']): ?><div class="schedule-header-actions"><a class="button button--secondary" href="?<?= e(http_build_query(['page'=>'reports','tab'=>'usage','print'=>1]+$reportQuery)) ?>" target="_blank" rel="noopener">ฉบับพิมพ์ / PDF</a><a class="button button--primary" href="?<?= e(http_build_query(['download'=>'report-csv']+$reportQuery)) ?>"><span data-icon="download"></span>ส่งออก CSV</a></div><?php endif; ?></header>
 <form method="get" class="report-filters" data-report-filters>
     <input type="hidden" name="page" value="reports"><input type="hidden" name="tab" value="usage">
