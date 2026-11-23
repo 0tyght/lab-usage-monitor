@@ -2,9 +2,10 @@
 .room-current-class:last-child { border-bottom: 0; }
 .room-current-class h3 { font-size: 18px; }
 .room-current-class .button { margin-top: 16px; }
-.room-qr-dialog { width: min(660px,calc(100% - 32px)); }
+.room-qr-dialog { width: min(660px,calc(100% - 32px)); overflow-wrap: anywhere; }
 .room-qr-dialog .button-group { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .room-qr-poster { padding: 16px; text-align: center; }
+.room-qr-poster + .room-qr-poster { display: none; }
 .room-qr-poster h2 { font-size: 32px; }
 .room-qr-poster [data-room-qr] { background: white; padding: 24px; width: min(100%,340px); margin: 16px auto; }
 .room-qr-poster canvas,.room-qr-poster img { display: block; width: 100%; height: auto; }
@@ -31,17 +32,24 @@
   .room-qr-dialog .term-dialog__actions .button { flex: 1 1 100%; }
 }
 @media print {
-  @page room-qr { size: A4 portrait; margin: 15mm; }
-  body.printing-room-qr { page: room-qr; }
+  @page room-qr { size: A4 landscape; margin: 8mm 0; }
+  body.printing-room-qr { page: room-qr; background: white; overflow: visible; }
   .report-tabs { display: none !important; }
   body.printing-room-qr > *:not(.app-shell) { display: none !important; }
   body.printing-room-qr .sidebar,body.printing-room-qr .topbar,body.printing-room-qr .page-header,body.printing-room-qr main > *:not(.room-qr-dialog) { display: none !important; }
   body.printing-room-qr .app-shell,body.printing-room-qr .app-main,body.printing-room-qr main { display: block !important; margin: 0 !important; padding: 0 !important; min-height: 0 !important; }
-  body.printing-room-qr .room-qr-dialog { display: block !important; position: static; width: 100%; max-height: none; border: 0; box-shadow: none; overflow: visible; }
+  body.printing-room-qr .room-qr-dialog { display: block !important; position: static; width: 100%; max-width: none; height: auto; max-height: none; margin: 0; padding: 0; border: 0; box-shadow: none; overflow: visible; }
   body.printing-room-qr .room-qr-dialog::backdrop { display: none; }
-  body.printing-room-qr .room-qr-dialog > *:not(.term-dialog__body),body.printing-room-qr .room-qr-dialog .term-dialog__body > *:not(.room-qr-poster) { display: none !important; }
-  body.printing-room-qr .term-dialog__body { overflow: visible; }
-  body.printing-room-qr .room-qr-poster [data-room-qr] { width: 90mm; }
+  body.printing-room-qr .room-qr-dialog > *:not(.term-dialog__body),body.printing-room-qr .room-qr-dialog .term-dialog__body > *:not(.room-qr-sheet) { display: none !important; }
+  body.printing-room-qr .term-dialog__body { padding: 0; overflow: visible; }
+  .room-qr-sheet { position: relative; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); min-height: 192mm; break-inside: avoid; }
+  .room-qr-sheet::after { content: ""; position: absolute; left: 50%; top: 0; bottom: 0; border-left: 0.3mm dashed #777; }
+  .room-qr-sheet .room-qr-poster { display: flex; flex-direction: column; justify-content: center; align-items: center; min-width: 0; padding: 4mm 10mm; color: #17212b; }
+  .room-qr-poster h2 { margin: 2mm 0 0; font-size: 22pt; line-height: 1.2; }
+  .room-qr-poster h3 { margin: 1.5mm 0 0; font-size: 14pt; line-height: 1.25; }
+  .room-qr-poster p { margin: 0; color: #17212b; font-size: 12pt; line-height: 1.5; }
+  .room-qr-poster [data-room-qr] { flex: none; width: 90mm; max-width: 100%; padding: 9mm; margin: 2mm auto; }
+  .room-qr-poster [data-room-qr] :is(canvas,img) { image-rendering: pixelated; }
 }
 
 .room-checkout summary { min-height: 44px; padding: 8px 0; cursor: pointer; }
@@ -76,6 +84,7 @@
 .room-table-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 .room-table-actions .text-link, .room-table-actions .text-button { display: inline-flex; align-items: center; min-height: 44px; }
 .room-table-actions form { margin: 0; }
+.room-management-table td { overflow-wrap: anywhere; }
 
 @media (min-width: 641px) {
   .room-management-table { min-width: 0; table-layout: fixed; }

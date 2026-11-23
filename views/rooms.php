@@ -209,37 +209,41 @@ $roomStatusOptions = [
 </dialog>
 <?php endif; ?>
 
-<?php if ($posterRoom): ?>
+<?php if ($posterRoom): $posterUrl = public_room_url($posterRoom['qr_code']); ?>
 <dialog class="term-dialog room-qr-dialog" id="room-qr-dialog" aria-labelledby="room-qr-title" open>
     <header class="term-dialog__header">
         <div>
             <h2 id="room-qr-title">QR ประจำห้อง <?= e($posterRoom['code']) ?></h2>
-            <p>พิมพ์ติดหน้าห้องได้ ใช้ลิงก์เดิมทุกคลาส</p>
+            <p>กระดาษ A4 แนวนอน 1 แผ่นได้ป้ายเหมือนกัน 2 ป้าย ตัดตามเส้นประแล้วติดด้านนอกและด้านในห้อง</p>
         </div>
         <a href="?page=rooms" class="icon-button" data-close-room-qr aria-label="ปิด QR หน้าห้อง"><span data-icon="x"></span></a>
     </header>
     <div class="term-dialog__body">
-        <section class="room-qr-poster" data-room-poster>
-            <p>LUMS · ลงชื่อเข้าใช้ห้องปฏิบัติการ</p>
-            <h2><?= e($posterRoom['code']) ?></h2>
-            <h3><?= e($posterRoom['name']) ?></h3>
-            <div data-room-qr="<?= e(public_room_url($posterRoom['qr_code'])) ?>" role="img" aria-label="QR ประจำห้อง <?= e($posterRoom['code']) ?>"></div>
-            <p>สแกนก่อนเข้าใช้ แล้วกรอกรหัสของตนเอง</p>
-            <p>เมื่อใช้เสร็จ สแกน QR นี้อีกครั้งเพื่อบันทึกเวลาออก</p>
-        </section>
+        <div class="room-qr-sheet">
+            <?php for ($copy = 0; $copy < 2; $copy++): ?>
+                <section class="room-qr-poster" data-room-poster>
+                    <p>LUMS · สแกนเข้า–ออกห้องปฏิบัติการ</p>
+                    <h2><?= e($posterRoom['code']) ?></h2>
+                    <h3><?= e($posterRoom['name']) ?></h3>
+                    <div data-room-qr="<?= e($posterUrl) ?>" role="img" aria-label="QR ประจำห้อง <?= e($posterRoom['code']) ?>"></div>
+                    <p>สแกนก่อนเข้าใช้ แล้วกรอกรหัสของตนเอง</p>
+                    <p>เมื่อใช้เสร็จ สแกน QR นี้อีกครั้งเพื่อบันทึกเวลาออก</p>
+                </section>
+            <?php endfor; ?>
+        </div>
         <label class="field">
             <span>ลิงก์ประจำห้อง (ใช้แทนการสแกนได้)</span>
-            <input data-room-link value="<?= e(public_room_url($posterRoom['qr_code'])) ?>" readonly>
+            <input data-room-link value="<?= e($posterUrl) ?>" readonly>
         </label>
         <p data-room-qr-feedback role="status"></p>
         <div class="button-group">
             <button class="button button--secondary" data-copy-room-link type="button">คัดลอกลิงก์</button>
-            <a class="text-link" target="_blank" rel="noopener" href="<?= e(public_room_url($posterRoom['qr_code'])) ?>">เปิดหน้าลงชื่อ</a>
+            <a class="text-link" target="_blank" rel="noopener" href="<?= e($posterUrl) ?>">เปิดหน้าลงชื่อ</a>
         </div>
     </div>
     <footer class="term-dialog__actions">
         <button class="button button--secondary" data-download-room-qr type="button" disabled>ดาวน์โหลด QR (PNG)</button>
-        <button class="button button--primary" data-print-room-qr type="button" disabled>พิมพ์ป้าย / PDF</button>
+        <button class="button button--primary" data-print-room-qr type="button" disabled>พิมพ์ 2 ป้าย / PDF</button>
     </footer>
 </dialog>
 <?php endif; ?>

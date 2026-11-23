@@ -1,9 +1,14 @@
 (() => {
   'use strict';
   const dialog=document.querySelector('#room-qr-dialog');if(!dialog)return;
-  const root=dialog.querySelector('[data-room-qr]'),feedback=dialog.querySelector('[data-room-qr-feedback]');
+  const codes=dialog.querySelectorAll('[data-room-qr]'),feedback=dialog.querySelector('[data-room-qr-feedback]');
   dialog.removeAttribute('open');dialog.showModal();document.body.classList.add('term-dialog-open');
-  try {new QRCode(root,{text:root.dataset.roomQr,width:512,height:512,correctLevel:QRCode.CorrectLevel.M});dialog.querySelectorAll('[data-download-room-qr],[data-print-room-qr]').forEach(b=>b.disabled=false);}
+  try {
+    for (const code of codes) {
+      new QRCode(code,{text:code.dataset.roomQr,width:512,height:512,correctLevel:QRCode.CorrectLevel.M});
+    }
+    dialog.querySelectorAll('[data-download-room-qr],[data-print-room-qr]').forEach(button=>button.disabled=false);
+  }
   catch {feedback.textContent='สร้าง QR ไม่สำเร็จ กรุณาโหลดใหม่ หรือคัดลอกลิงก์ด้านล่าง';}
   dialog.querySelector('[data-close-room-qr]').addEventListener('click',e=>{e.preventDefault();dialog.close();});
   dialog.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();dialog.close();}});
@@ -20,7 +25,7 @@
       ctx.fillStyle='white';ctx.fillRect(0,0,800,1000);ctx.fillStyle='#17212b';ctx.textAlign='center';
       ctx.font='bold 44px "Noto Sans Thai", sans-serif';ctx.fillText(dialog.querySelector('[data-room-poster] h2').textContent,400,72);
       ctx.font='26px "Noto Sans Thai", sans-serif';ctx.fillText(dialog.querySelector('[data-room-poster] h3').textContent,400,124,720);
-      ctx.imageSmoothingEnabled=false;ctx.drawImage(root.querySelector('canvas'),144,176,512,512);
+      ctx.imageSmoothingEnabled=false;ctx.drawImage(codes[0].querySelector('canvas'),144,176,512,512);
       ctx.fillText('สแกนก่อนเข้าใช้ แล้วกรอกรหัสของตนเอง',400,752);ctx.font='22px "Noto Sans Thai", sans-serif';ctx.fillText('เมื่อใช้เสร็จ สแกน QR นี้อีกครั้ง',400,806);ctx.fillText('เพื่อบันทึกเวลาออก',400,852);ctx.fillText('QR ประจำห้อง · ใช้ได้ทุกครั้ง',400,912);
       const link=document.createElement('a');link.href=canvas.toDataURL('image/png');link.download='LUMS-room-'+dialog.querySelector('[data-room-poster] h2').textContent.replace(/[^a-z0-9_-]/gi,'_')+'.png';link.click();feedback.textContent='ดาวน์โหลดป้าย QR แล้ว';
     }catch{feedback.textContent='ดาวน์โหลดไม่สำเร็จ กรุณาลองใหม่หรือใช้พิมพ์ป้าย / PDF';}finally{button.disabled=false;}

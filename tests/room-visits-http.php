@@ -87,6 +87,11 @@ $second=array_replace($input,['csrf_token'=>$csrf($again),'client_request_id'=>$
 $request($url,$second);$id2=(int)db()->query('SELECT MAX(id) FROM room_visits WHERE room_id='.$room)->fetchColumn();
 $cookies=[];[, $login]=$request('/?page=login');$request('/?page=login',['action'=>'login','csrf_token'=>$csrf($login),'email'=>'admin@example.invalid','password'=>getenv('LUMS_ADMIN_PASSWORD')]);
 [, $poster]=$request('/?page=rooms&qr_room='.$room);$expect(str_contains($poster,'data-room-qr=') && str_contains($poster,'?page=room-checkin&amp;token='.$token) && !str_contains($poster,'HTTPQR001'),'Poster contains permanent room URL, no personal data');
+$posterDom=new DOMDocument(); @$posterDom->loadHTML('<?xml encoding="UTF-8">'.$poster);
+$posterXPath=new DOMXPath($posterDom);
+$copies=$posterXPath->query('//*[@id="room-qr-dialog"]//*[@data-room-poster]//*[@data-room-qr]');
+$roomLink=$posterXPath->evaluate('string(//*[@data-room-link]/@value)');
+$expect($copies->length===2 && $copies->item(0)->getAttribute('data-room-qr')===$roomLink && $copies->item(1)->getAttribute('data-room-qr')===$roomLink,'Both printable signs use the same permanent room check-in link');
 $params=['page'=>'reports','tab'=>'walkins','room_id'=>$room,'date_from'=>date('Y-m-d'),'date_to'=>date('Y-m-d'),'unit'=>'periods','period_minutes'=>50,'q'=>'HTTPQR'];
 [, $report]=$request('/?'.http_build_query($params));$expect(str_contains($report,'นิสิตทดสอบ HTTP') && str_contains($report,'ผู้ใช้ค้างสมมติ') && str_contains($report,'คาบรายบุคคล'),'Admin report includes both completed and open visits');
 [, $csv]=$request('/?'.http_build_query(['download'=>'room-visits-csv']+$params));
