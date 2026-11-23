@@ -287,6 +287,7 @@ if (($_GET['download'] ?? '') === 'report-csv') {
         ['ห้อง', $roomLabel],
         ['ปี/ภาค', $filters['term_id'] ? get_academic_term($filters['term_id'])['name'] : 'ทุกภาค'],
         ['ข้อมูล', ['all'=>'แผนและคลาสที่สร้าง', 'classes'=>'คลาสที่สร้างแล้ว', 'schedule'=>'แผนที่ยังไม่สร้างคลาส'][$filters['source']]],
+        ['รูปแบบรายงาน', ['detail'=>'แยกรายการ', 'day'=>'รวมตามวัน', 'room'=>'รวมตามห้อง'][$filters['group']]],
         ['หน่วย', $report['unit_label'], $filters['unit']==='periods' ? '1 คาบ = '.$filters['period_minutes'].' นาที' : '1 ชั่วโมง = 60 นาที'],
         ['รวม', number_format($report['quantity'], 2, '.', ''), 'รายการไม่ซ้ำ', $report['events']],
         ['คำค้น', $filters['q'], 'เรียงลำดับ', $filters['sort']==='desc' ? 'มากไปน้อย' : 'น้อยไปมาก'],
@@ -336,7 +337,10 @@ if (($_GET['download'] ?? '') === 'room-visits-csv') {
     $visitTable=room_visit_table($visitReport); $vf=$visitReport['filters'];
     header('Content-Type: text/csv; charset=UTF-8'); header('Cache-Control: no-store'); header('Content-Disposition: attachment; filename="lums-room-visits-'.$vf['date_from'].'-'.$vf['date_to'].'.csv"');
     echo "\xEF\xBB\xBF"; $out=fopen('php://output','wb');
-    $metadata=[['รายงานเข้าใช้นอกคลาส LUMS'],['ช่วงวันที่เข้า',$vf['date_from'],$vf['date_to']],['ช่วงเวลาเข้า (UTC+7)',$vf['time_from'],$vf['time_to']],['ห้อง ID',$vf['room_id'] ?: 'ทุกห้อง'],['สถานะ',$vf['visit_status'] ?: 'ทุกสถานะ'],['คำค้น',$vf['q']],['หน่วย',$vf['unit'],'นาทีต่อคาบ',$vf['period_minutes']],['เรียงลำดับ',$vf['sort']],['หมายเหตุ','ระยะเวลารายบุคคลจากเวลาที่ผู้ใช้กดเข้า–ออก ไม่ใช่ชั่วโมงครองห้อง; รายการค้างหรือผู้ดูแลปิดไม่คำนวณระยะเวลา'],[]];
+    $roomLabel='ทุกห้อง';
+    foreach (list_rooms() as $room) if ($room['id']===$vf['room_id']) $roomLabel=$room['code'].' — '.$room['name'];
+    $statusLabels=[''=>'ทุกสถานะ','active'=>'กำลังใช้งาน','self'=>'ผู้ใช้ยืนยันออก','timeout'=>'Time out','admin'=>'ผู้ดูแลปิดรายการ'];
+    $metadata=[['รายงานเข้าใช้นอกคลาส LUMS'],['ช่วงวันที่เข้า',$vf['date_from'],$vf['date_to']],['ช่วงเวลาเข้า (UTC+7)',$vf['time_from'],$vf['time_to']],['ห้อง',$roomLabel],['สถานะ',$statusLabels[$vf['visit_status']]],['คำค้น',$vf['q']],['หน่วย',$vf['unit']==='periods'?'คาบรายบุคคล':'ชั่วโมงรายบุคคล','นาทีต่อคาบ',$vf['period_minutes']],['เรียงลำดับ',$vf['sort']==='desc'?'ใหม่ไปเก่า':'เก่าไปใหม่'],['จำนวนรายการ',count($visitReport['rows'])],['หมายเหตุ','ระยะเวลารายบุคคลจากเวลาที่ผู้ใช้กดเข้า–ออก รายการ Time out และผู้ดูแลปิดไม่คำนวณระยะเวลา'],[]];
     foreach (array_merge($metadata,[$visitTable['headers']],$visitTable['rows']) as $row) fputcsv($out,array_map('csv_safe_value',$row)); fclose($out); exit;
 }
 
@@ -968,7 +972,7 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
         return;
     }
 ?>
-    <div class="table-wrap">
+    <div class="table-wrap <?= $showClass ? 'report-table-wrap' : '' ?>">
         <table class="data-table">
             <thead><tr><th>เวลาลงชื่อ</th><th>เวลาออก / สถานะ</th><th>รหัสนักศึกษา</th><th>ชื่อ–นามสกุล</th><?php if ($showClass): ?><th>รายวิชา</th><th>ห้อง</th><?php endif; ?></tr></thead>
             <tbody><?php foreach ($items as $item): ?><tr>
@@ -976,7 +980,7 @@ function render_attendance_table(array $items, bool $showClass, bool $filtered =
                 <td data-label="เวลาออก / สถานะ"><?= !empty($item['check_out_at']) ? e(thai_datetime($item['check_out_at'])) : '—' ?><small><?= ($item['checkout_method'] ?? '')==='timeout'?'Time out · เวลาสิ้นสุดคลาส':(($item['checkout_method'] ?? '')==='self'?'ผู้ใช้ยืนยันออก':(!empty($item['checkout_deadline_at']) && empty($item['check_out_at'])?'กำลังใช้งาน':'ยังไม่มีข้อมูลเวลาออก')) ?></small></td>
                 <td data-label="รหัสนักศึกษา"><strong><?= e($item['student_code']) ?></strong></td>
                 <td data-label="ชื่อ–นามสกุล"><?= e($item['student_name']) ?></td>
-                <?php if ($showClass): ?><td data-label="รายวิชา"><a class="text-link" data-class-id="<?= (int)$item['class_id'] ?>" href="?page=classes&amp;class_id=<?= e($item['class_id']) ?>"><?= e($item['course_code']) ?></a><small><?= e($item['course_name']) ?></small></td><td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td><?php endif; ?>
+                <?php if ($showClass): ?><td data-label="รายวิชา"><a class="text-link" data-class-id="<?= (int)$item['class_id'] ?>" href="?page=classes&amp;class_id=<?= e($item['class_id']) ?>"><?= e($item['course_code']) ?></a><small><?= e($item['course_name']) ?><?= !empty($item['section'])?' · กลุ่ม '.e($item['section']):'' ?></small><small><?= e($item['lecturer_name']) ?></small></td><td data-label="ห้อง"><strong><?= e($item['room_code']) ?></strong><small><?= e($item['room_name']) ?></small></td><?php endif; ?>
             </tr><?php endforeach; ?></tbody>
         </table>
     </div>

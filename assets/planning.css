@@ -123,13 +123,16 @@
 @media print {
   @page { size: A4 landscape; margin: 12mm; }
   .usage-report .report-filters, .usage-report .schedule-header-actions, .print-actions, .report-pagination { display: none !important; }
+  .usage-report .visit-management-column, .usage-report [data-report-pending] { display: none !important; }
   body:has(.usage-report) { background: white; font-size: 10pt; }
   .usage-report .report-table-wrap { overflow: visible; border: 0; }
   .usage-report table { display: table !important; width: 100%; min-width: 0; font-size: 8pt; }
   .usage-report thead { display: table-header-group !important; }
   .usage-report tbody { display: table-row-group !important; }
   .usage-report tr { display: table-row !important; break-inside: avoid; }
-  .usage-report td, .usage-report th { display: table-cell !important; padding: 6px; white-space: normal; }
+  .usage-report td, .usage-report th { display: table-cell !important; padding: 6px; white-space: normal; overflow-wrap: anywhere; }
+  .usage-report td > * { display: block; }
+  .usage-report td a { min-height: 0; padding: 0; color: inherit; text-decoration: none; }
   .usage-report td::before { display: none !important; }
   .usage-report .report-summary { break-inside: avoid; }
 }
