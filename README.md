@@ -1,99 +1,23 @@
 # LUMS
 
-Laboratory Usage Monitoring System — ระบบตรวจสอบและบันทึกการเข้าใช้งานห้องเรียนปฏิบัติการโดยเชื่อมต่อกับแบบฟอร์มดิจิทัล
+ระบบติดตามการใช้ห้องปฏิบัติการ อาจารย์และผู้ดูแลใช้เว็บจัดตารางและดูรายงาน ผู้ใช้ห้องสแกน QR ประจำห้องเพื่อลงชื่อเข้าและออก
 
-## Project documents
+## ติดตั้งและใช้งาน
 
-- `AGENTS.md` — persistent implementation and UX/UI rules for Codex
-- `docs/product-brief.md` — users, MVP scope, success indicators, and navigation
-- `docs/design-system.md` — visual tokens, components, responsive behavior, and review checklist
+อ่าน [คู่มือส่งมอบและย้ายเครื่อง](คู่มือส่งมอบ.md) สำหรับการติดตั้งเครื่องใหม่ การย้ายข้อมูล การเปิดและปิดระบบ และการตั้งค่าที่จำเป็น
 
-## Run locally
+บนเครื่องที่ติดตั้งแล้ว ใช้ **เปิดระบบออนไลน์.cmd** และ **ปิดระบบออนไลน์.cmd** ลิงก์เข้าสู่ระบบคือ https://0tyght.github.io/lab-usage-monitor/ โดยคอมพิวเตอร์เครื่องให้บริการและ Docker Desktop ต้องเปิดอยู่
 
-ต้องการเปิดฟรีผ่านลิงก์ GitHub เหมือน Smart Tha Pho ให้ใช้ [คู่มือเปิดออนไลน์ฟรี](docs/free-online.md) และ `start-online.ps1` ไม่ใช่ Render แบบเสียเงิน วิธีนี้ยังต้องเปิดเครื่องและ Docker ระหว่างใช้งาน
+**สำรองข้อมูลออนไลน์.cmd** สร้างสำเนา SQLite ที่ตรวจความสมบูรณ์แล้ว ใน `storage/handover-backups` เก็บสำเนาและไฟล์ `.env.online` เป็นความลับ การย้ายเครื่องต้องคัดลอกทั้งสองส่วนตามคู่มือ
 
-Requirements: XAMPP with PHP 8.2 or newer.
+ระบบใช้ Docker และ SQLite ซึ่งเก็บข้อมูลใน volume แยกจาก source code GitHub Pages เป็นทางเข้าที่เชื่อมต่อกับ Docker ผ่าน Cloudflare Quick Tunnel
 
-```powershell
-cd C:\xampp\htdocs\lab-usage-monitor
-.\start-local.ps1
-```
+## พัฒนาและทดสอบ
 
-Then open `http://127.0.0.1:8085`.
+- `docker compose up --build -d` เปิดสภาพแวดล้อม local ที่ `http://localhost:8086` พร้อมข้อมูลตัวอย่าง โหมดนี้ใช้สำหรับพัฒนา
+- `docker compose --env-file .env.production -f compose.production.yaml up --build -d` เปิด production หลัง HTTPS reverse proxy ตามการตั้งค่าใน `.env.production.example`
+- `docs/schedule-import.md` อธิบายไฟล์นำเข้าตาราง
+- `docs/design-system.md` และ `AGENTS.md` ระบุแนวทางพัฒนา
+- GitHub Actions ตรวจ PHP, JavaScript, การเข้าใช้งาน, ตารางเรียน, QR และรายงาน
 
-Demo back-office account (the main site accepts `admin` and `lecturer` roles only):
-
-- Email: `admin@lums.local`
-- Password: `admin123`
-
-The local environment uses SQLite at `storage/lums.sqlite`. Session files are kept inside `storage/sessions` so the project does not depend on XAMPP's global session folder.
-
-Students do not sign in to the back office. They open the class-specific page generated from **คลาสเรียนและ QR** and submit their student code and name there.
-
-## Current status
-
-The working vertical slice includes admin/lecturer authentication, academic terms, a graphic weekly laboratory timetable, clickable time-slot selection, room and lecturer conflict detection, atomic full-semester CSV import, class creation from a scheduled occurrence, a unique QR code per class, a public mobile student check-in page, duplicate-attendance protection, attendance history, room status, and report summaries. See `docs/schedule-import.md` for the import format.
-
-## Run with Docker
-
-Docker Compose runs the application on port `8086` and stores SQLite data in a persistent named volume.
-
-```powershell
-cd C:\xampp\htdocs\lab-usage-monitor
-docker compose up --build -d
-docker compose ps
-```
-
-Open `http://localhost:8086`. Stop the containers without deleting data:
-
-```powershell
-docker compose down
-```
-
-To rebuild after changing application code:
-
-```powershell
-docker compose up --build -d
-```
-
-Do not add `-v` to `docker compose down` unless you intentionally want to delete the Docker database volume.
-
-`APP_URL` is embedded in each generated QR link. For phone testing on the same network, change it in `compose.yaml` from `http://localhost:8086` to the computer's LAN URL (for example `http://192.168.1.20:8086`) and rebuild. On the real server, set it to the public HTTPS domain.
-
-## Deployment pipeline
-
-The `main` branch is the deployment source of truth. GitHub Actions builds the Docker image, checks every PHP file and the JavaScript bundle, verifies a clean production bootstrap, and publishes successful `main` images to `ghcr.io/0tyght/lab-usage-monitor`.
-
-### Render preview
-
-ขั้นตอนภาษาไทย: [เปิดออนไลน์ด้วย Render](docs/deploy-render.md). บริการนี้ต้องใช้ compute และ persistent disk แบบเสียเงิน; ตรวจยอดใน Render ก่อนยืนยันสร้างบริการ
-
-`render.yaml` defines a Docker web service with a persistent disk mounted at `/var/www/html/storage`. Connect the repository as a Render Blueprint and provide these secret values in the Render dashboard:
-
-- `LUMS_ADMIN_EMAIL`
-- `LUMS_ADMIN_PASSWORD` — at least 12 characters
-
-Render receives `APP_URL` from `RENDER_EXTERNAL_URL`. Demo accounts and demo records are not created when `APP_ENV=production`.
-
-Docker exposes only `/var/www/html/public` (the PHP entry point and copied static assets). Database, sessions, source code, deployment configuration, and scripts remain outside the HTTP document root. CI checks HTTP health, static assets, and private-file isolation before publishing an image. `.env*`, local databases, and sessions are excluded from the Docker build context; only environment examples may be committed to Git.
-
-The XAMPP / PHP built-in server instructions above are for local development only. Do not expose that development server through port forwarding or a public tunnel; use the hardened Docker configuration for online deployment.
-
-### University server or VPS
-
-Copy `.env.production.example` to a secret `.env.production` file on the server, replace every placeholder, then run behind an HTTPS reverse proxy:
-
-```bash
-docker compose --env-file .env.production -f compose.production.yaml up --build -d
-```
-
-The production Compose service binds to `127.0.0.1:8086`, so Nginx, Caddy, or the university reverse proxy should terminate HTTPS and forward requests to that port. Keep the named volume and back it up; never run `docker compose down -v` on production.
-
-## Recommended next step
-
-Recommended next implementation slice:
-
-1. Add university holidays, cancelled/make-up classes, and examination-week exceptions
-2. Add printable class QR sheets and CSV/XLSX attendance export
-3. Add user/role and room administration with institutional identity
-4. Add report charts, notifications, audit review, and research satisfaction questionnaires
+อย่า commit ไฟล์ `.env` ฐานข้อมูล สำเนาข้อมูล หรือ session และอย่าใช้ `docker compose down -v` กับข้อมูลที่ต้องการเก็บ
