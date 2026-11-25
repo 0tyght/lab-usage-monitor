@@ -2,6 +2,13 @@
 
 declare(strict_types=1);
 
+function conflict_lecturer_id(int $id): int
+{
+    $query = db()->prepare("SELECT role FROM users WHERE id=?");
+    $query->execute([$id]);
+    return $query->fetchColumn() === 'lecturer' ? $id : 0;
+}
+
 /** Availability is deliberately anonymous: no other lecturer's course/QR data. */
 function one_off_busy_times(int $roomId, int $lecturerId, string $date, array $ignoreIds = []): array
 {
@@ -12,7 +19,7 @@ function one_off_busy_times(int $roomId, int $lecturerId, string $date, array $i
     $end = $day->modify('+1 day')->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z');
     $ignored = $ignoreIds ? ' AND id NOT IN ('.implode(',',array_map('intval',$ignoreIds)).')' : '';
     $query = db()->prepare("SELECT room_id, lecturer_user_id, starts_at, ends_at FROM class_sessions WHERE status<>'cancelled' AND (room_id=:room OR lecturer_user_id=:lecturer) AND starts_at<:end AND ends_at>:start".$ignored);
-    $query->execute([':room'=>$roomId, ':lecturer'=>$lecturerId, ':start'=>$start, ':end'=>$end]);
+    $query->execute([':room'=>$roomId, ':lecturer'=>conflict_lecturer_id($lecturerId), ':start'=>$start, ':end'=>$end]);
     $busy = [];
     foreach ($query->fetchAll() as $row) {
         $begin = max(strtotime($start), strtotime($row['starts_at']));
@@ -20,7 +27,7 @@ function one_off_busy_times(int $roomId, int $lecturerId, string $date, array $i
         $busy[] = ['start'=>(int)(($begin-strtotime($start))/60), 'end'=>(int)(($finish-strtotime($start))/60), 'reason'=>(int)$row['room_id']===$roomId?'ห้องมีคลาสเรียนแล้ว':'ผู้สอนมีคลาสเรียนแล้ว'];
     }
     $query = db()->prepare("SELECT s.room_id,s.starts_time,s.ends_time FROM course_schedules s WHERE s.status='active' AND (s.room_id=:room OR s.lecturer_user_id=:lecturer) AND s.day_of_week=:day AND s.active_from<=:date AND s.active_until>=:date AND NOT EXISTS (SELECT 1 FROM class_sessions cs WHERE cs.schedule_id=s.id AND cs.scheduled_date=:date)");
-    $query->execute([':room'=>$roomId, ':lecturer'=>$lecturerId, ':day'=>(int)$day->format('N'), ':date'=>$date]);
+    $query->execute([':room'=>$roomId, ':lecturer'=>conflict_lecturer_id($lecturerId), ':day'=>(int)$day->format('N'), ':date'=>$date]);
     foreach ($query->fetchAll() as $row) {
         $minutes = static fn(string $t): int => (int)substr($t,0,2)*60+(int)substr($t,3,2);
         $busy[] = ['start'=>$minutes($row['starts_time']), 'end'=>$minutes($row['ends_time']), 'reason'=>(int)$row['room_id']===$roomId?'ห้องมีตารางทั้งภาค':'ผู้สอนมีตารางทั้งภาค'];
@@ -77,7 +84,7 @@ function recurring_conflicts_with_one_off(int $roomId, int $lecturerId, int $wee
     $first = new DateTimeImmutable($from,$tz);
     $last = (new DateTimeImmutable($to,$tz))->modify('+1 day');
     $query = db()->prepare("SELECT starts_at,ends_at FROM class_sessions WHERE schedule_id IS NULL AND status<>'cancelled' AND (room_id=:room OR lecturer_user_id=:lecturer) AND starts_at<:end AND ends_at>:start");
-    $query->execute([':room'=>$roomId, ':lecturer'=>$lecturerId, ':start'=>$first->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z'), ':end'=>$last->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z')]);
+    $query->execute([':room'=>$roomId, ':lecturer'=>conflict_lecturer_id($lecturerId), ':start'=>$first->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z'), ':end'=>$last->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d\TH:i:s\Z')]);
     foreach ($query->fetchAll() as $row) {
         $begin=(new DateTimeImmutable($row['starts_at']))->setTimezone($tz);
         $finish=(new DateTimeImmutable($row['ends_at']))->setTimezone($tz);

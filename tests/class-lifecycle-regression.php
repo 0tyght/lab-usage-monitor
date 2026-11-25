@@ -15,7 +15,8 @@ $input=['room_id'=>$room,'lecturer_user_id'=>$admin,'course_code'=>'LIFE101','co
 $made=create_class_session($input); $expect($made['ok'],'Create four continuous hours');
 $id=$made['id']; $session=get_class_session($id); $token=$session['qr_token'];
 $expect(strtotime($session['ends_at'])-strtotime($session['starts_at'])===14400,'Four-hour duration stored exactly');
-$expect(!create_class_session(array_replace($input,['room_id'=>$otherRoom]))['ok'],'All creation paths reject lecturer conflicts');
+$expect(one_off_busy_times($otherRoom,$admin,'2030-05-06')===[],'Unassigned administrator does not conflict across rooms');
+$expect(count(one_off_busy_times($room,$admin,'2030-05-06'))>0,'Room conflict remains when teacher is unspecified');
 $expect(!create_class_session(array_replace($input,['starts_at'=>'2030-05-06T08:00','ends_at'=>'2030-05-06T14:00']))['ok'],'Spanning an occupied period is rejected');
 $state=['status'=>'open','starts_at'=>'2030-01-01T01:00:00Z','ends_at'=>'2030-01-01T05:00:00Z','checkin_mode'=>'scheduled'];
 $expect(class_checkin_status($state,strtotime($state['starts_at'])-1)==='scheduled','Before start waits');

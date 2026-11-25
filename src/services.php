@@ -355,7 +355,7 @@ function local_datetime_to_utc(string $value): ?string
 
 function list_lecturers(): array
 {
-    $statement = db()->query("SELECT id, email, full_name, department FROM users WHERE is_active = 1 AND role IN ('admin', 'lecturer') ORDER BY CASE role WHEN 'lecturer' THEN 0 ELSE 1 END, full_name");
+    $statement = db()->query("SELECT id, email, full_name, department, role FROM users WHERE is_active = 1 AND role IN ('admin', 'lecturer') ORDER BY CASE role WHEN 'lecturer' THEN 0 ELSE 1 END, full_name");
     $rows = $statement->fetchAll();
     foreach ($rows as &$row) $row['id'] = (int) $row['id'];
 
@@ -536,7 +536,7 @@ function validate_schedule_input(array $input, int $ignoreId = 0): array
           AND s.active_from<=:active_until AND s.active_until>=:active_from
           AND s.starts_time<:ends_time AND s.ends_time>:starts_time
           AND (s.room_id=:room_id OR s.lecturer_user_id=:lecturer_id)");
-    $conflict->execute([':day'=>$day, ':ignore_id'=>$ignoreId, ':active_until'=>$activeUntil, ':active_from'=>$activeFrom, ':ends_time'=>$endsTime, ':starts_time'=>$startsTime, ':room_id'=>$roomId, ':lecturer_id'=>$lecturerId]);
+    $conflict->execute([':day'=>$day, ':ignore_id'=>$ignoreId, ':active_until'=>$activeUntil, ':active_from'=>$activeFrom, ':ends_time'=>$endsTime, ':starts_time'=>$startsTime, ':room_id'=>$roomId, ':lecturer_id'=>conflict_lecturer_id((int)$lecturerId)]);
     while ($row = $conflict->fetch()) {
         $overlapStart = new DateTimeImmutable(max($activeFrom,$row['active_from']));
         $firstLesson = $overlapStart->modify('+' . (((int)$day-(int)$overlapStart->format('N')+7)%7) . ' days');

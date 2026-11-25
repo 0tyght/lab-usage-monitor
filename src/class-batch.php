@@ -76,7 +76,7 @@ function class_candidate_conflict(array $rows, array $ignoreIds = []): ?string
     $cache = [];
     foreach ($rows as $i=>$row) {
         foreach (array_slice($rows,0,$i) as $other) {
-            if (($row['room_id']===$other['room_id'] || $row['lecturer_user_id']===$other['lecturer_user_id']) && $row['starts_at']<$other['ends_at'] && $row['ends_at']>$other['starts_at']) return 'ช่วงเวลาที่เลือกชนกันเองในวันที่ '.thai_date_label($row['date']).' กรุณาแก้ช่วงเวลา';
+            if (($row['room_id']===$other['room_id'] || ($row['lecturer_user_id']===$other['lecturer_user_id'] && conflict_lecturer_id($row['lecturer_user_id'])!==0)) && $row['starts_at']<$other['ends_at'] && $row['ends_at']>$other['starts_at']) return 'ช่วงเวลาที่เลือกชนกันเองในวันที่ '.thai_date_label($row['date']).' กรุณาแก้ช่วงเวลา';
         }
         $key = $row['room_id'].'|'.$row['lecturer_user_id'].'|'.$row['date'];
         $cache[$key] ??= one_off_busy_times($row['room_id'],$row['lecturer_user_id'],$row['date'],$ignoreIds);
