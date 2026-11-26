@@ -76,6 +76,11 @@ $expect(!apply_class_change(array_replace($edit,['class_id'=>(int)db()->query("S
 $_SESSION['user_id']=$admin;
 db()->prepare('INSERT INTO attendance_records(class_session_id,student_code,student_name,check_in_at,created_at) VALUES (?,?,?,?,?)')->execute([$base['id'],'TEST9001','ผู้ทดสอบสมมติ',utc_now(),utc_now()]);
 $beforeProtected=get_class_session($base['id']);
+$historyEdit=array_replace($allEdit,['course_name'=>'แก้ชื่อชุดคลาสย้อนหลัง']);
+$historyResult=apply_class_change($historyEdit);
+$afterProtected=get_class_session($base['id']);
+$expect($historyResult['ok'] && $historyResult['count']===2 && $historyResult['protected']===1 && $historyResult['metadata_count']===3,'Whole-series course metadata sync includes protected historical lessons');
+$expect($afterProtected['course_name']==='แก้ชื่อชุดคลาสย้อนหลัง' && $afterProtected['starts_at']===$beforeProtected['starts_at'] && $afterProtected['status']===$beforeProtected['status'] && $afterProtected['qr_token']===$beforeProtected['qr_token'] && count(class_attendance($base['id']))===1,'Name sync preserves attended lesson schedule, status, QR and attendance');
 $cancel=apply_class_change(['class_id'=>$base['id'],'scope'=>'all','operation'=>'cancel']);
 $expect($cancel['ok'] && $cancel['count']===2 && $cancel['protected']===1,'Whole-series cancellation skips a lesson with attendance');
 $expect(get_class_session($base['id'])['status']===$beforeProtected['status'] && count(class_attendance($base['id']))===1,'History and attendance remain intact');

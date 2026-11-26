@@ -34,14 +34,14 @@ $activeLecturerIds=array_column($seriesLecturers,'id');
                 <label class="field"><span>คลาสที่จะเปลี่ยน</span><select name="scope"><option value="once" <?= $changeValues['scope']==='once'?'selected':'' ?>>เฉพาะครั้งนี้</option><?php if ($editClass['series_key']): ?><option value="following" <?= $changeValues['scope']==='following'?'selected':'' ?>>ครั้งนี้และคลาสถัดไป</option><option value="all" <?= $changeValues['scope']==='all'?'selected':'' ?>>ทุกคลาสในชุด</option><?php endif; ?></select></label>
             </div>
             <?php if ($editClass['series_key']): ?>
-                <p class="inline-note" data-change-scope-note>ข้อมูลรายวิชาและผู้สอนจะใช้ร่วมกันกับทุกคลาสที่แก้ไขได้ในชุดนี้</p>
+                <p class="inline-note" data-change-scope-note>รหัสวิชา ชื่อวิชา และกลุ่มเรียนจะซิงค์กับทุกคลาสในขอบเขต ส่วนคลาสที่มีประวัติจะคงห้อง เวลา ผู้สอน และประวัติการลงชื่อเดิม</p>
             <?php else: ?>
                 <p class="helper-text">แก้ไขหรือยกเลิกได้เฉพาะคลาสที่ยังไม่เริ่มและยังไม่มีผู้ลงชื่อ</p>
             <?php endif; ?>
             <div data-change-fields>
                 <section class="class-change-section" aria-labelledby="change-course-heading">
                     <h3 id="change-course-heading">ข้อมูลรายวิชาและผู้สอน</h3>
-                    <p class="helper-text" data-change-shared-help>แก้ข้อมูลส่วนนี้ครั้งเดียว แล้วใช้กับคลาสในขอบเขตด้านบน</p>
+                    <p class="helper-text" data-change-shared-help>รหัสวิชา ชื่อวิชา และกลุ่มเรียนจะอัปเดตทุกคลาสที่เลือก แม้คลาสเก่ามีผู้ลงชื่อ ส่วนห้อง เวลา หมายเหตุ และผู้สอนจะแก้ได้เฉพาะคลาสที่ยังเปลี่ยนได้</p>
                     <div class="form-grid class-change-course-fields">
                         <label class="field"><span>รหัสวิชา</span><input name="course_code" value="<?= e($changeValues['course_code']) ?>" maxlength="30" required></label>
                         <label class="field"><span>ชื่อวิชา / กิจกรรม</span><input name="course_name" value="<?= e($changeValues['course_name']) ?>" maxlength="150" required></label>

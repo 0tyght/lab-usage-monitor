@@ -139,13 +139,14 @@ function class_change_preview(array $input): array
     $query->execute([':key'=>$scope==='once' || !$selected['series_key'] ? $selected['id'] : $selected['series_key']]);
     $targets = array_map('normalize_class_session',$query->fetchAll());
     if ($scope==='following') $targets = array_values(array_filter($targets,static fn($r)=>$r['starts_at'] >= $selected['starts_at']));
-    $eligible = []; $protected = 0;
+    $eligible = []; $protectedRows = [];
     foreach ($targets as $row) {
         if ($viewer['role']==='lecturer' && $row['lecturer_user_id']!==(int)$viewer['id']) return class_batch_error('ไม่มีสิทธิ์แก้ไขคลาสทั้งหมดในชุดนี้');
         // Preserve real history, even when changing/cancelling an entire series.
-        if ($row['attendance_count']>0 || strtotime($row['starts_at'])<=time() || $row['status']==='cancelled') { $protected++; continue; }
+        if ($row['attendance_count']>0 || strtotime($row['starts_at'])<=time() || $row['status']==='cancelled') { $protectedRows[]=$row; continue; }
         $eligible[] = $row;
     }
+    $protected=count($protectedRows);
     if (!$eligible) return class_batch_error('ไม่มีคลาสที่เปลี่ยนได้ คลาสที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้วจะคงประวัติเดิม');
     $changed = [];
     $tz = new DateTimeZone((string)app_config('app.timezone','Asia/Bangkok'));
@@ -202,7 +203,19 @@ function class_change_preview(array $input): array
         }
     }
     $template = $operation==='edit' ? ['course_code'=>$changed[0]['course_code'],'course_name'=>$changed[0]['course_name'],'section'=>$changed[0]['section'] ?? '','lecturer_name'=>$changed[0]['lecturer_name']] : null;
-    return ['ok'=>true,'rows'=>$changed,'before'=>$eligible,'count'=>count($changed),'protected'=>$protected,'operation'=>$operation,'scope'=>$scope,'template'=>$template,'message'=>($operation==='cancel'?'จะยกเลิก ':'จะเปลี่ยน ').count($changed).' คลาส · คงประวัติ '. $protected.' คลาสที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้ว'];
+    $metadataUpdates=[];
+    if ($operation==='edit') {
+        $after=['course_code'=>$courseCode,'course_name'=>$courseName,'section'=>$section!==''?$section:null];
+        foreach ($protectedRows as $row) {
+            $before=['course_code'=>$row['course_code'],'course_name'=>$row['course_name'],'section'=>$row['section'] ?? null];
+            if ($before!==$after) $metadataUpdates[]=['id'=>(int)$row['id'],'before'=>$before,'after'=>$after];
+        }
+    }
+    $metadataCount=$operation==='edit'?count($targets):0;
+    $message=($operation==='cancel'?'จะยกเลิก ':'จะเปลี่ยน ').count($changed).' คลาส';
+    if ($operation==='edit') $message.=' · ซิงค์รหัสวิชา ชื่อวิชา และกลุ่มเรียน '.$metadataCount.' คลาส';
+    $message.=' · คงประวัติ '.$protected.' คลาสที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้ว';
+    return ['ok'=>true,'rows'=>$changed,'before'=>$eligible,'count'=>count($changed),'protected'=>$protected,'metadata_count'=>$metadataCount,'metadata_updates'=>$metadataUpdates,'operation'=>$operation,'scope'=>$scope,'template'=>$template,'message'=>$message];
 }
 
 function apply_class_change(array $input): array
@@ -216,10 +229,15 @@ function apply_class_change(array $input): array
             if ($preview['operation']==='cancel') $connection->prepare("UPDATE class_sessions SET status='cancelled',updated_at=? WHERE id=?")->execute([utc_now(),$row['id']]);
             else $connection->prepare('UPDATE class_sessions SET room_id=?,lecturer_user_id=?,course_code=?,course_name=?,section=?,starts_at=?,ends_at=?,notes=?,updated_at=? WHERE id=?')->execute([$row['room_id'],$row['lecturer_user_id'],$row['course_code'],$row['course_name'],$row['section'],$row['starts_at'],$row['ends_at'],$row['notes'],utc_now(),$row['id']]);
         }
+        foreach ($preview['metadata_updates'] ?? [] as $metadata) {
+            $connection->prepare('UPDATE class_sessions SET course_code=?,course_name=?,section=?,updated_at=? WHERE id=?')->execute([$metadata['after']['course_code'],$metadata['after']['course_name'],$metadata['after']['section'],utc_now(),$metadata['id']]);
+        }
         $snapshot=static fn($row)=>array_intersect_key($row,array_flip(['id','room_id','lecturer_user_id','lecturer_name','course_code','course_name','section','starts_at','ends_at','notes','status']));
-        audit_log('class_series_'.$preview['operation'],'class_session',(int)$input['class_id'],['scope'=>$preview['scope'],'class_ids'=>array_column($preview['rows'],'id'),'protected'=>$preview['protected'],'before'=>array_map($snapshot,$preview['before']),'after'=>array_map($snapshot,$preview['rows'])],(int)current_user()['id']);
+        audit_log('class_series_'.$preview['operation'],'class_session',(int)$input['class_id'],['scope'=>$preview['scope'],'class_ids'=>array_column($preview['rows'],'id'),'protected'=>$preview['protected'],'metadata_updates'=>$preview['metadata_updates'] ?? [],'before'=>array_map($snapshot,$preview['before']),'after'=>array_map($snapshot,$preview['rows'])],(int)current_user()['id']);
         $connection->commit();
-        $preview['message']=($preview['operation']==='cancel'?'ยกเลิกแล้ว ':'แก้ไขแล้ว ').$preview['count'].' คลาส · คงประวัติ '.$preview['protected'].' คลาสที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้ว';
+        $preview['message']=($preview['operation']==='cancel'?'ยกเลิกแล้ว ':'แก้ไขแล้ว ').$preview['count'].' คลาส';
+        if ($preview['operation']==='edit') $preview['message'].=' · ซิงค์ข้อมูลวิชา '.$preview['metadata_count'].' คลาส';
+        $preview['message'].=' · คงประวัติ '.$preview['protected'].' คลาสที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้ว';
         return $preview;
     } catch (Throwable) { return class_batch_error('เปลี่ยนข้อมูลไม่สำเร็จ ไม่มีการเปลี่ยนบางส่วน กรุณาลองอีกครั้ง'); }
     finally { if ($connection->inTransaction()) $connection->rollBack(); }
