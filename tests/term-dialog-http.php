@@ -385,7 +385,7 @@ $sample=$httpClasses[0];
 [, $waiting]=$request('/?page=student-checkin&token='.$sample['qr_token']);
 $expect(str_contains($waiting,'ก่อนเรียน 10 นาที') && !str_contains($waiting,'name="student_code"'),'Future QR explains automatic admission and does not expose the submission form');
 [, $changePage]=$request('/?page=classes&edit_class='.$sample['id']);
-$expect(str_contains($changePage,'class-change-dialog') && str_contains($changePage,'ทั้งชุดที่สร้างพร้อมกัน'),'Class change dialog offers series scope');
+$expect(str_contains($changePage,'class-change-dialog') && str_contains($changePage,'แก้ไขคลาสและข้อมูลร่วมของชุด') && str_contains($changePage,'ทุกคลาสในชุด') && str_contains($changePage,'แก้ข้อมูลส่วนนี้ครั้งเดียว'),'Class change dialog explains linked series editing and shared course details');
 $changeInput=['action'=>'change_class_batch','csrf_token'=>$csrf($changePage),'class_id'=>$sample['id'],'operation'=>'cancel','scope'=>'once','revision'=>$sample['updated_at']];
 [$status,$body]=$request('/?api=class-change-preview',$changeInput);
 $expect($status===200 && json_decode($body,true)['count']===1 && json_decode($body,true)['lessons'][0]['start']==='08:00','Cancellation preview uses local lesson time and exact affected count');
