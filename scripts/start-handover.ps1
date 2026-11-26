@@ -1,6 +1,12 @@
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
+try {
+    & (Join-Path $PSScriptRoot 'create-desktop-shortcut.ps1') -InstallDir (Get-Location).Path -Quiet
+} catch {
+    Write-Warning "Could not prepare the desktop shortcut. You can still use start-online.ps1 directly. $($_.Exception.Message)"
+}
+
 if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
     throw 'Docker Desktop is required. Install it, then restart Windows and try again.'
 }
