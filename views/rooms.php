@@ -170,7 +170,9 @@ $roomStatusOptions = [
             <div class="form-grid">
                 <label class="field">
                     <span>รหัสห้อง</span>
-                    <input name="code" value="<?= e($roomValues['code']) ?>" maxlength="30" pattern="[A-Za-z0-9._-]{1,30}" required>
+                    <input name="code" value="<?= e($roomValues['code']) ?>" maxlength="60" aria-describedby="room-code-help<?= isset($roomErrors['code'])?' room-code-error':'' ?>" <?= isset($roomErrors['code'])?'aria-invalid="true"':'' ?> required>
+                    <small class="room-code-help" id="room-code-help">ใช้รหัสตามป้ายห้องได้ เช่น Shop EE-9, ห้อง A/2 หรือ EE 420 (ไม่เกิน 60 ตัวอักษร)</small>
+                    <?php if (isset($roomErrors['code'])): ?><small class="field-error" id="room-code-error"><?= e($roomErrors['code']) ?></small><?php endif; ?>
                 </label>
                 <label class="field">
                     <span>ชื่อห้อง</span>

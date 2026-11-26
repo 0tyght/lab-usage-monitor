@@ -24,7 +24,7 @@ $openLabel = date('Y-m-d',$opens) === date('Y-m-d',$now) ? date('H:i',$opens) : 
         <p><strong><?= e(thai_date_label(date('Y-m-d',$start)).' · '.date('H:i',$start).'–'.$endLabel.' น.') ?></strong> · <?= e($panelClass['room_code'].' '.$panelClass['room_name']) ?></p>
         <div class="class-context-actions">
             <a class="text-link" href="?page=rooms&amp;qr_room=<?= $panelClass['room_id'] ?>">QR ประจำห้อง / พิมพ์ป้าย</a>
-            <?php if ($editClassId): ?><a class="text-link" href="?page=classes&amp;edit_class=<?= $editClassId ?>"><?= $editClassId===$panelClass['id']?'แก้ไข / ยกเลิกคลาสเรียน':'จัดการคลาสครั้งถัดไปในชุด' ?></a><?php endif; ?>
+            <?php if ($editClassId): ?><a class="text-link" href="?page=classes&amp;edit_class=<?= $editClassId ?><?= $panelClass['series_key']?'&amp;scope=all':'' ?>"><?= $panelClass['series_key']?'แก้ไขชุดคลาส':'แก้ไขคลาสนี้' ?></a><?php endif; ?>
         </div>
     </div>
     <section class="class-admission-controls" aria-label="การรับลงชื่อ">

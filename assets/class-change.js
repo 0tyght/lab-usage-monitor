@@ -5,7 +5,7 @@
   const form=dialog.querySelector('form'),field=n=>form.elements.namedItem(n),q=s=>dialog.querySelector(s);
   const submit=form.querySelector('[type="submit"]'),summary=q('[data-change-summary]'),retry=q('[data-change-retry]');
   const payload=()=>new URLSearchParams(new FormData(form)).toString();
-  let controller,sequence=0,timer,validated='';
+  let controller,sequence=0,timer,validated='',previousOperation=field('operation').value;
   function invalidate(){controller?.abort();clearTimeout(timer);sequence++;validated='';submit.disabled=true;retry.hidden=true;summary.removeAttribute('aria-busy');}
   function prepare(){
     const cancel=field('operation').value==='cancel',bulk=field('scope').value!=='once';
@@ -13,10 +13,18 @@
     q('[data-change-fields]').querySelectorAll('input,select,textarea').forEach(el=>el.disabled=cancel);
     field('class_date').readOnly=bulk;if(bulk)field('class_date').value=field('class_date').dataset.originalDate;
     q('[data-bulk-time-help]').hidden=!bulk;
-    submit.textContent=cancel?'ยืนยันยกเลิกคลาส':'ยืนยันการแก้ไข';
+    const scope=field('scope').value;
+    const scopeNote=q('[data-change-scope-note]');
+    if(scopeNote){
+      const target=scope==='once'?'เฉพาะคลาสนี้':scope==='following'?'คลาสนี้และคลาสถัดไป':'ทุกคลาสในชุด';
+      scopeNote.textContent=cancel
+        ?`ยกเลิก${target}ได้เฉพาะรายการที่ยังไม่เริ่มและไม่มีผู้ลงชื่อ รายการที่มีประวัติจะคงเดิม`
+        :`ข้อมูลรายวิชาและผู้สอนจะใช้ร่วมกับ${target}ที่ยังแก้ไขได้ รายการที่เริ่มแล้ว มีผู้ลงชื่อ หรือยกเลิกแล้วจะคงเดิม`;
+    }
+    submit.textContent=cancel?(scope==='once'?'ยืนยันยกเลิกคลาส':'ยืนยันยกเลิกชุดคลาส'):(scope==='once'?'ยืนยันการแก้ไข':'ยืนยันการแก้ไขชุดคลาส');
     submit.classList.toggle('button--danger',cancel);
     form.dataset.confirmDanger=String(cancel);
-    invalidate();q('[data-change-lessons]').replaceChildren();summary.classList.remove('is-error');summary.textContent='กำลังเตรียมตรวจรายการ…';timer=setTimeout(check,300);
+    invalidate();q('[data-change-lessons]').replaceChildren();q('[data-change-template]').hidden=true;q('[data-change-template]').textContent='';summary.classList.remove('is-error');summary.textContent='กำลังเตรียมตรวจรายการ…';timer=setTimeout(check,300);
   }
   async function check(){
     invalidate();const serial=sequence,body=payload();q('[data-change-lessons]').replaceChildren();
@@ -30,6 +38,12 @@
       summary.textContent=result.message;summary.classList.toggle('is-error',!result.ok);
       if(result.ok){
         validated=body;submit.disabled=false;form.dataset.confirm=result.message+' ยืนยันดำเนินการหรือไม่?';
+        if(result.template){
+          const template=q('[data-change-template]');
+          const section=result.template.section?` · กลุ่ม ${result.template.section}`:'';
+          template.textContent=`ข้อมูลที่จะใช้ร่วมกัน: ${result.template.course_code} · ${result.template.course_name}${section} · ${result.template.lecturer_name}`;
+          template.hidden=false;
+        }
         const ul=document.createElement('ul');
         result.lessons.forEach(row=>{const li=document.createElement('li');const date=new Date(row.date+'T12:00:00').toLocaleDateString('th-TH',{day:'numeric',month:'short',year:'numeric'});li.textContent=date+' · '+row.room+' · '+row.start+'–'+row.end;ul.append(li);});q('[data-change-lessons]').append(ul);
         if(result.count>result.lessons.length){const p=document.createElement('p');p.textContent='และอีก '+(result.count-result.lessons.length)+' คลาส';q('[data-change-lessons]').append(p);}
@@ -37,7 +51,16 @@
     }catch(error){if(serial!==sequence)return;summary.textContent='ตรวจรายการไม่สำเร็จ ข้อมูลที่แก้ยังอยู่ กรุณาลองอีกครั้ง';retry.hidden=false;}
     finally{clearTimeout(timeout);if(serial===sequence)summary.removeAttribute('aria-busy');}
   }
-  form.addEventListener('input',prepare);form.addEventListener('change',prepare);retry.addEventListener('click',check);
+  form.addEventListener('input',prepare);
+  form.addEventListener('change',event=>{
+    if(event.target===field('operation')){
+      const current=field('operation').value;
+      if(current==='cancel'&&previousOperation==='edit'&&field('scope').value!=='once')field('scope').value='once';
+      previousOperation=current;
+    }
+    prepare();
+  });
+  retry.addEventListener('click',check);
   form.addEventListener('submit',event=>{if(!validated || validated!==payload()){event.preventDefault();event.stopPropagation();prepare();}});
   dialog.querySelectorAll('[data-close-change]').forEach(link=>link.addEventListener('click',event=>{event.preventDefault();if(form.dataset.submitting!=='true')dialog.close();}));
   dialog.addEventListener('cancel',event=>{if(form.dataset.submitting==='true')event.preventDefault();});

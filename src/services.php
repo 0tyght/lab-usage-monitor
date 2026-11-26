@@ -122,7 +122,9 @@ function validate_room_management_input(array $input, int $roomId = 0): array
         ];
     }
 
-    $code = strtoupper(trim((string)($input['code'] ?? '')));
+    $rawCode = (string)($input['code'] ?? '');
+    $normalizedCode = preg_replace('/[\p{Z}\s]+/u', ' ', trim($rawCode));
+    $code = is_string($normalizedCode) ? trim($normalizedCode) : '';
     $name = trim((string)($input['name'] ?? ''));
     $building = trim((string)($input['building'] ?? ''));
     $floor = trim((string)($input['floor'] ?? ''));
@@ -130,8 +132,8 @@ function validate_room_management_input(array $input, int $roomId = 0): array
     $description = trim((string)($input['description'] ?? ''));
     $errors = [];
 
-    if (!preg_match('/^[A-Z0-9._-]{1,30}$/D', $code)) {
-        $errors['code'] = 'รหัสห้องใช้ได้เฉพาะ A-Z, 0-9, จุด ขีดกลาง หรือขีดล่าง และยาวไม่เกิน 30 ตัวอักษร';
+    if (text_length($code) > 60 || preg_match('/^[\p{L}\p{M}\p{N}\p{P}\p{S} ]{1,60}$/uD', $code) !== 1) {
+        $errors['code'] = 'ใช้ตัวอักษรได้ทุกภาษา ตัวเลข ช่องว่าง และเครื่องหมายทั่วไป ไม่เกิน 60 ตัวอักษร';
     }
     if (text_length($name) < 1 || text_length($name) > 150) {
         $errors['name'] = 'ชื่อห้องต้องมีความยาว 1–150 ตัวอักษร';

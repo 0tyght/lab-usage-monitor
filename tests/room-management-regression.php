@@ -23,7 +23,7 @@ $expect=static function(bool $ok,string $message)use(&$checks):void{
 };
 
 $created=create_room([
-    'code'=>'LAB-X1',
+    'code'=>'Shop EE-9',
     'name'=>'ห้องทดสอบการจัดการ',
     'building'=>'อาคารทดสอบ',
     'floor'=>'5',
@@ -32,7 +32,7 @@ $created=create_room([
 ]);
 $expect($created['ok'],'Admin can add a room without entering capacity');
 $room=get_room_by_id((int)$created['id']);
-$expect($room && $room['code']==='LAB-X1','New room can be read back');
+$expect($room && $room['code']==='Shop EE-9','Room codes preserve mixed case and spaces from the door sign');
 $roomTokenQuery=db()->prepare('SELECT qr_token FROM rooms WHERE id=?');
 $roomTokenQuery->execute([(int)$created['id']]);
 $expect((int)(public_room((string)$roomTokenQuery->fetchColumn())['id'] ?? 0)===(int)$created['id'],'A newly created room QR resolves without replacing its token');
@@ -40,15 +40,23 @@ $expect(public_room('lums-cpe-101-demo')!==null,'Existing demo room QR remains u
 $expect((int)$room['capacity']===1,'Legacy capacity column remains internal compatibility metadata only');
 
 $duplicate=create_room([
-    'code'=>'lab-x1',
+    'code'=>'shop ee-9',
     'name'=>'ห้องรหัสซ้ำ',
     'building'=>'อาคารทดสอบ',
     'status'=>'available',
 ]);
 $expect(!$duplicate['ok'] && isset($duplicate['errors']['code']),'Duplicate room code is rejected case-insensitively');
 
+$tooLong=create_room([
+    'code'=>str_repeat('R',61),
+    'name'=>'รหัสห้องยาวเกินกำหนด',
+    'building'=>'อาคารทดสอบ',
+    'status'=>'available',
+]);
+$expect(!$tooLong['ok'] && isset($tooLong['errors']['code']),'Room code length is limited to keep labels readable');
+
 $updated=update_room((int)$created['id'],[
-    'code'=>'LAB-X2',
+    'code'=>'ห้อง EE-9 / ชั้น 2',
     'name'=>'ห้องทดสอบหลังแก้ไข',
     'building'=>'อาคารใหม่',
     'floor'=>'6',
@@ -57,7 +65,7 @@ $updated=update_room((int)$created['id'],[
 ]);
 $expect($updated['ok'],'Admin can edit room details');
 $room=get_room_by_id((int)$created['id']);
-$expect($room['code']==='LAB-X2' && $room['status']==='maintenance','Edited room values are persisted');
+$expect($room['code']==='ห้อง EE-9 / ชั้น 2' && $room['status']==='maintenance','Room code accepts Thai text and common punctuation');
 
 $_SESSION['user_id']=$lecturer;
 $blocked=create_room([

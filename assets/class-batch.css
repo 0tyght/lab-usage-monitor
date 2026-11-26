@@ -34,12 +34,17 @@
   .class-day-controls .field, .class-day-controls input, .class-day-controls select { min-width: 0; width: 100%; }
 }
 .class-list-pagination { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; }
-.class-change-dialog { width: min(760px,calc(100% - 32px)); }
+.class-change-dialog { width: min(880px,calc(100% - 32px)); }
 .class-change-dialog [hidden] { display: none !important; }
 .class-create-dialog button:disabled, .class-change-dialog button:disabled { opacity: .55; cursor: not-allowed; }
 .class-create-context + .helper-text, .class-change-dialog .helper-text { margin: 12px 0 16px; }
-.class-change-dialog [data-change-fields] > .field { margin-top: 16px; }
+.class-change-section { margin-top: 24px; }
+.class-change-section h3 { margin-bottom: 0; font-size: 16px; }
+.class-change-section > .helper-text { margin-top: 4px; }
+.class-change-course-fields { grid-template-columns: repeat(2,minmax(0,1fr)); margin-top: 14px; }
+.class-change-section > .inline-note { margin-top: 12px; }
 .class-change-preview { margin: 16px 0; padding-top: 16px; border-top: 1px solid var(--border); }
+.class-change-template-preview { margin: 10px 0; padding: 10px 12px; color: var(--brand-900); background: var(--brand-50); border-left: 3px solid var(--brand-600); font-size: 13px; }
 @media (max-width: 767px) {
   .class-create-context, .class-course-fields { grid-template-columns: 1fr; }
   .class-picker-heading { display: block; }
@@ -47,4 +52,5 @@
   .class-slot-row { grid-template-columns: 1fr 1fr; }
   .class-slot-row .icon-button { grid-column: 2; justify-self: end; }
   .class-pending-range { align-items: start; flex-direction: column; }
+  .class-change-course-fields { grid-template-columns: 1fr; }
 }

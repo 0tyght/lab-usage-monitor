@@ -221,7 +221,7 @@ if (in_array($_GET['api'] ?? '', ['schedule-preview','class-batch-preview','clas
                 default => validate_schedule_input($_POST),
             };
             if ($_GET['api']==='schedule-preview' && $viewer['role']==='lecturer' && isset($preview['errors']['form'])) $preview['errors']['form']='ห้องหรือผู้สอนมีรายการในช่วงนี้แล้ว กรุณาเลือกเวลาอื่น';
-            echo json_encode(['ok'=>$preview['ok'], 'count'=>$preview['count'] ?? 0, 'protected'=>$preview['protected'] ?? 0, 'lessons'=>array_map(static fn($r)=>['date'=>$r['date'] ?? substr($r['starts_at'],0,10),'room'=>$r['room_code'],'start'=>$r['starts_time'] ?? thai_datetime($r['starts_at']),'end'=>$r['ends_time'] ?? thai_datetime($r['ends_at'])],array_slice($preview['rows'] ?? [],0,12)), 'errors'=>$preview['errors'] ?? [], 'message'=>$preview['ok'] ? ($preview['message'] ?? 'ห้องและผู้สอนไม่ชนกับรายการอื่นในช่วงที่เลือก') : implode(' ', array_values($preview['errors'] ?? []))], JSON_UNESCAPED_UNICODE);
+            echo json_encode(['ok'=>$preview['ok'], 'count'=>$preview['count'] ?? 0, 'protected'=>$preview['protected'] ?? 0, 'scope'=>$preview['scope'] ?? null, 'template'=>$preview['template'] ?? null, 'lessons'=>array_map(static fn($r)=>['date'=>$r['date'] ?? substr($r['starts_at'],0,10),'room'=>$r['room_code'],'start'=>$r['starts_time'] ?? thai_datetime($r['starts_at']),'end'=>$r['ends_time'] ?? thai_datetime($r['ends_at'])],array_slice($preview['rows'] ?? [],0,12)), 'errors'=>$preview['errors'] ?? [], 'message'=>$preview['ok'] ? ($preview['message'] ?? 'ห้องและผู้สอนไม่ชนกับรายการอื่นในช่วงที่เลือก') : implode(' ', array_values($preview['errors'] ?? []))], JSON_UNESCAPED_UNICODE);
         } catch (Throwable) {
             http_response_code(503);
             echo json_encode(['ok'=>false,'message'=>'ตรวจตารางไม่สำเร็จ กรุณาลองอีกครั้ง']);
@@ -497,7 +497,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             redirect_to('classes',['range'=>'all','class_id'=>(int)$_POST['class_id']]);
         }
         $_SESSION['class_change_errors']=$result['errors'];
-        $_SESSION['class_change_input']=array_intersect_key($_POST,array_flip(['class_id','scope','operation','room_id','class_date','starts_time','ends_time','notes']));
+        $_SESSION['class_change_input']=array_intersect_key($_POST,array_flip(['class_id','scope','operation','room_id','class_date','starts_time','ends_time','notes','course_code','course_name','section','lecturer_user_id']));
         redirect_to('classes',['edit_class'=>(int)$_POST['class_id']]);
     }
 
